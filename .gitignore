@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets — never commit real keys
+.env
+.env.local
+
+# Generated media (ephemeral at runtime)
+backend/outputs/
+!backend/outputs/.gitkeep
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.log

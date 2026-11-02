@@ -2,13 +2,19 @@ services:
   - type: web
     name: universal-ai-saas
     runtime: docker
+    region: frankfurt          # closest to the UK; change if you prefer oregon/ohio/singapore
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
-    plan: free
     healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: DEBUG
         value: "false"
+      # Render generates this for you; copy it from the dashboard to call the API.
+      - key: PLATFORM_API_KEY
+        generateValue: true
+      # Add provider keys in the dashboard after the first deploy.
       - key: GROQ_API_KEY
         sync: false
       - key: GOOGLE_API_KEY
@@ -20,6 +26,4 @@ services:
       - key: HUGGINGFACE_API_KEY
         sync: false
       - key: POLLINATIONS_API_KEY
-        sync: false
-      - key: PLATFORM_API_KEY
         sync: false
