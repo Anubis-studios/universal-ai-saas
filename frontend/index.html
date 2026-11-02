@@ -115,9 +115,12 @@
 
   <dialog id="settings-dialog">
     <form method="dialog" class="stack">
-      <h3>API base URL</h3>
-      <input id="api-base" placeholder="http://localhost:8000" />
-      <p class="hint">Stored in this browser only.</p>
+      <h3>Connection</h3>
+      <label for="api-key">API key</label>
+      <input id="api-key" type="password" autocomplete="off" placeholder="PLATFORM_API_KEY (blank if the server has none)" />
+      <label for="api-base">API base URL</label>
+      <input id="api-base" placeholder="leave blank to use this page's origin" />
+      <p class="hint">Stored in this browser only; never sent anywhere but the API.</p>
       <button class="primary" value="save">Save</button>
     </form>
   </dialog>

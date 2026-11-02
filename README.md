@@ -96,6 +96,8 @@ Two caveats that are real, not hypothetical:
 - **Ephemeral disk.** Generated images and video land in `backend/outputs/`, which is wiped when the container restarts. Mount a volume at `/app/outputs` for persistence.
 - **Video needs a GPU.** The client is real, but ComfyUI/SVD on CPU is unusably slow. Text and image work anywhere.
 
+Open the web client, click **Settings**, paste `PLATFORM_API_KEY`, save. The key stays in your browser's localStorage and is sent as a bearer token on every request. If you leave the server key empty (localhost), the field can stay blank.
+
 ## API
 
 ```

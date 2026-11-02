@@ -1,4 +1,4 @@
-import { api, setApiBase } from "./lib/api.js";
+import { api, setApiBase, setApiKey } from "./lib/api.js";
 import { $, $$ } from "./components/ui.js";
 import { initChat } from "./pages/chat.js";
 import { initImage } from "./pages/image.js";
@@ -16,11 +16,13 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => switchView(tab.d
 $("#settings-toggle").addEventListener("click", () => {
   const dialog = $("#settings-dialog");
   $("#api-base").value = localStorage.getItem("universal.apiBase") || "";
+  $("#api-key").value = localStorage.getItem("universal.apiKey") || "";
   dialog.showModal();
 });
 $("#settings-dialog").addEventListener("close", (e) => {
-  if (e.target.returnValue === "save") setApiBase($("#api-base").value.trim());
-  else setApiBase($("#api-base").value.trim());
+  setApiBase($("#api-base").value.trim());
+  setApiKey($("#api-key").value);
+  if (e.target.returnValue === "save") boot();
 });
 
 async function boot() {

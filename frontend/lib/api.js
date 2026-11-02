@@ -1,9 +1,24 @@
-const DEFAULT_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+// Served by the same FastAPI app in production, so the origin is the API root.
+const DEFAULT_BASE = window.location.origin.startsWith("file:")
   ? "http://localhost:8000"
-  : `${window.location.origin}/api`;
+  : window.location.origin;
 
 export function apiBase() {
   return localStorage.getItem("universal.apiBase") || DEFAULT_BASE;
+}
+
+export function apiKey() {
+  return localStorage.getItem("universal.apiKey") || "";
+}
+
+export function setApiKey(value) {
+  if (value) localStorage.setItem("universal.apiKey", value.trim());
+  else localStorage.removeItem("universal.apiKey");
+}
+
+function authHeaders(extra) {
+  const key = apiKey();
+  return key ? { ...extra, authorization: `Bearer ${key}` } : { ...extra };
 }
 
 export function setApiBase(value) {
@@ -14,14 +29,16 @@ export function setApiBase(value) {
 async function request(path, { method = "GET", body, signal } = {}) {
   const res = await fetch(`${apiBase()}/api/v1${path}`, {
     method,
-    headers: body ? { "content-type": "application/json" } : undefined,
+    headers: authHeaders(body ? { "content-type": "application/json" } : undefined),
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) {
-    const message = data.error || data.detail || `HTTP ${res.status}`;
+    const message = res.status === 401
+      ? "unauthorized — add your PLATFORM_API_KEY in settings"
+      : data.error || data.detail || `HTTP ${res.status}`;
     throw new Error(typeof message === "string" ? message : JSON.stringify(message));
   }
   return data;
@@ -42,10 +59,11 @@ export const api = {
 export async function streamChat(payload, onEvent, signal) {
   const res = await fetch(`${apiBase()}/api/v1/chat`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: authHeaders({ "content-type": "application/json" }),
     body: JSON.stringify({ ...payload, stream: true }),
     signal,
   });
+  if (res.status === 401) throw new Error("unauthorized — add your PLATFORM_API_KEY in settings");
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
