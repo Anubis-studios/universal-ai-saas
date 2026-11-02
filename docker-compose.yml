@@ -1,0 +1,50 @@
+# Universal AI SaaS — full stack.
+#
+#   docker compose up --build                 # app only (hosted free tiers)
+#   docker compose --profile local up -d      # + Ollama, ComfyUI, SD WebUI
+#
+# Copy backend/.env.example to backend/.env and fill in the keys you have first.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports: ["8000:8000"]
+    env_file: [backend/.env]
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      COMFYUI_BASE_URL: http://comfyui:8188
+      STABLE_DIFFUSION_URL: http://sd-webui:7860
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:3000
+    volumes:
+      - media:/app/outputs
+    depends_on:
+      ollama: {condition: service_started, required: false}
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [local]
+    ports: ["11434:11434"]
+    volumes: [ollama:/root/.ollama]
+    restart: unless-stopped
+
+  comfyui:
+    image: yanwk/comfyui-boot:cu121-slim
+    profiles: [local]
+    ports: ["8188:8188"]
+    volumes: [comfy:/root]
+    restart: unless-stopped
+
+  sd-webui:
+    image: universonic/stable-diffusion-webui:minimal
+    profiles: [local]
+    ports: ["7860:7860"]
+    volumes: [sdxl:/app/models]
+    restart: unless-stopped
+
+volumes:
+  media:
+  ollama:
+  comfy:
+  sdxl:

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Universal AI · one API for every model</title>
+  <meta name="description" content="Chat, generate images and video, and run agentic skills on free and local AI models." />
+  <link rel="stylesheet" href="/styles/app.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c5cff'/%3E%3Cpath d='M9 22V10h2.6l4.4 7 4.4-7H23v12h-2.4v-7.4L16 22l-4.6-7.4V22z' fill='white'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">U</span>
+        <div>
+          <strong>Universal AI</strong>
+          <small id="provider-summary">checking providers…</small>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" data-view="chat" role="tab">Chat</button>
+        <button class="tab" data-view="image" role="tab">Image</button>
+        <button class="tab" data-view="video" role="tab">Video</button>
+        <button class="tab" data-view="skills" role="tab">Skills</button>
+        <button class="tab" data-view="models" role="tab">Models</button>
+      </nav>
+      <button id="settings-toggle" class="ghost" title="API base URL">⚙︎</button>
+    </header>
+
+    <main>
+      <section id="view-chat" class="view is-active">
+        <div class="chat-shell">
+          <div class="chat-log" id="chat-log" aria-live="polite">
+            <div class="empty" id="chat-empty">
+              <h1>Ask anything, on any model.</h1>
+              <p>Requests route automatically across configured providers, and fall back when one is rate-limited.</p>
+            </div>
+          </div>
+          <form class="composer" id="chat-form">
+            <textarea id="chat-input" rows="1" placeholder="Message the model… (Enter to send, Shift+Enter for a newline)"></textarea>
+            <div class="composer-actions">
+              <select id="chat-model" aria-label="Model"></select>
+              <label class="switch"><input type="checkbox" id="chat-stream" checked /> Stream</label>
+              <button type="submit" class="primary" id="chat-send">Send</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="view-image" class="view">
+        <div class="panel">
+          <h2>Image generation</h2>
+          <form id="image-form" class="stack">
+            <label>Prompt<textarea id="image-prompt" rows="3" placeholder="A lighthouse in a storm, cinematic lighting" required></textarea></label>
+            <label>Negative prompt<input id="image-negative" placeholder="blurry, watermark" /></label>
+            <div class="row">
+              <label>Model<select id="image-model"></select></label>
+              <label>Size<select id="image-size">
+                <option>1024x1024</option><option>1024x576</option><option>576x1024</option><option>768x768</option>
+              </select></label>
+              <label>Steps<input id="image-steps" type="number" value="4" min="1" max="60" /></label>
+            </div>
+            <button class="primary" type="submit">Generate</button>
+          </form>
+          <div id="image-status" class="status"></div>
+          <div id="image-results" class="gallery"></div>
+        </div>
+      </section>
+
+      <section id="view-video" class="view">
+        <div class="panel">
+          <h2>Video generation</h2>
+          <p class="hint">Runs locally: a Stable Diffusion still, animated by Stable Video Diffusion on ComfyUI. No cloud credits.</p>
+          <form id="video-form" class="stack">
+            <label>Prompt<textarea id="video-prompt" rows="2" placeholder="Slow dolly over a neon-lit Tokyo street, rain" required></textarea></label>
+            <div class="row">
+              <label>Width<input id="video-width" type="number" value="576" min="256" max="1024" step="64" /></label>
+              <label>Height<input id="video-height" type="number" value="1024" min="256" max="1024" step="64" /></label>
+              <label>FPS<input id="video-fps" type="number" value="8" min="4" max="30" /></label>
+              <label>Motion<input id="video-motion" type="number" value="127" min="1" max="255" /></label>
+            </div>
+            <button class="primary" type="submit">Generate video</button>
+          </form>
+          <div id="video-status" class="status"></div>
+          <div id="video-result"></div>
+        </div>
+      </section>
+
+      <section id="view-skills" class="view">
+        <div class="panel">
+          <h2>Agentic skills</h2>
+          <p class="hint">Deterministic tool code, with an LLM doing the language work.</p>
+          <div id="skill-list" class="skill-grid"></div>
+          <form id="skill-form" class="stack" hidden>
+            <h3 id="skill-title"></h3>
+            <div id="skill-fields" class="stack"></div>
+            <div class="row">
+              <button class="primary" type="submit">Run skill</button>
+              <button type="button" class="ghost" id="skill-cancel">Cancel</button>
+            </div>
+          </form>
+          <pre id="skill-output" class="output" hidden></pre>
+        </div>
+      </section>
+
+      <section id="view-models" class="view">
+        <div class="panel">
+          <h2>Model catalogue</h2>
+          <div id="models-table" class="models"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" class="stack">
+      <h3>API base URL</h3>
+      <input id="api-base" placeholder="http://localhost:8000" />
+      <p class="hint">Stored in this browser only.</p>
+      <button class="primary" value="save">Save</button>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
