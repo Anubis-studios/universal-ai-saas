@@ -21,3 +21,5 @@ services:
         sync: false
       - key: POLLINATIONS_API_KEY
         sync: false
+      - key: PLATFORM_API_KEY
+        sync: false

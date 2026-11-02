@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     API_PREFIX: str = "/api/v1"
+    # Set on a public deployment to require "Authorization: Bearer <key>" on /api/v1.
+    # Empty means open (fine for localhost).
+    PLATFORM_API_KEY: str = ""
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     REQUEST_TIMEOUT_SECONDS: float = 120.0
     GENERATION_TIMEOUT_SECONDS: float = 600.0

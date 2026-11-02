@@ -52,3 +52,15 @@ async def test_skill_validation(client):
 async def test_unknown_skill(client):
     r = await client.post("/api/v1/skills/nope/run", json={"params": {}})
     assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_api_key_gate(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "PLATFORM_API_KEY", "s3cret")
+    assert (await client.get("/api/v1/models")).status_code == 401
+    assert (await client.get("/api/v1/models", headers={"Authorization": "Bearer wrong"})).status_code == 401
+    assert (await client.get("/api/v1/models", headers={"Authorization": "Bearer s3cret"})).status_code == 200
+    # health stays open for the platform's health checks
+    assert (await client.get("/health")).status_code == 200

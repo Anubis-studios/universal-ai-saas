@@ -62,6 +62,40 @@ docker compose --profile local up -d       # + Ollama, ComfyUI, SD WebUI
 docker compose exec ollama ollama pull llama3.1:8b
 ```
 
+## Deploy
+
+The `Dockerfile` is the deployable unit: Python 3.11-slim, non-root user, ffmpeg, `${PORT}`-aware, health check on `/health`. Every dependency is pinned and has a prebuilt manylinux cp311 wheel, so builds don't compile anything.
+
+**Before you expose it, set `PLATFORM_API_KEY`.** With it set, every `/api/v1/*` call needs `Authorization: Bearer <key>` (401 otherwise); `/health` and the web client stay open. Empty means open, which is fine on localhost and wrong on the internet.
+
+Render (repo has `render.yaml`):
+
+```bash
+git remote add origin git@github.com:<you>/universal-ai-saas.git && git push -u origin main
+# then: New → Blueprint → pick the repo → set the secret env vars
+```
+
+Fly.io (repo has `fly.toml`, one machine, scales to zero):
+
+```bash
+flyctl launch --no-deploy --copy-config      # keep the existing fly.toml
+flyctl secrets set PLATFORM_API_KEY=$(openssl rand -hex 24)
+flyctl secrets set GROQ_API_KEY=...          # any providers you have
+flyctl deploy
+```
+
+Anywhere with Docker:
+
+```bash
+docker build -t universal-ai-saas .
+docker run -p 8000:8000 -e PLATFORM_API_KEY=<key> -e GROQ_API_KEY=<key> universal-ai-saas
+```
+
+Two caveats that are real, not hypothetical:
+
+- **Ephemeral disk.** Generated images and video land in `backend/outputs/`, which is wiped when the container restarts. Mount a volume at `/app/outputs` for persistence.
+- **Video needs a GPU.** The client is real, but ComfyUI/SVD on CPU is unusably slow. Text and image work anywhere.
+
 ## API
 
 ```

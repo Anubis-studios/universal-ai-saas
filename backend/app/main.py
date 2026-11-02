@@ -55,6 +55,26 @@ app.add_middleware(
 )
 
 
+OPEN_PATHS = {"/health", "/health/ready", "/openapi.json"}
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    """Gate /api/v1 behind a bearer token when PLATFORM_API_KEY is set."""
+    key = settings.PLATFORM_API_KEY
+    path = request.url.path
+    if not key or not path.startswith(settings.API_PREFIX):
+        return await call_next(request)
+    header = request.headers.get("authorization", "")
+    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    if token != key:
+        return JSONResponse(
+            {"detail": "Invalid or missing API key."}, status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return await call_next(request)
+
+
 @app.exception_handler(GatewayError)
 async def gateway_error_handler(_: Request, exc: GatewayError) -> JSONResponse:
     return JSONResponse(
