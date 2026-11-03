@@ -2,6 +2,16 @@ import { api, mediaUrl } from "../lib/api.js";
 import { $, el, setStatus } from "../components/ui.js";
 
 export function initVideo() {
+  // Video needs a local ComfyUI/SD WebUI renderer; say so up front instead of
+  // letting the user wait for a request that cannot succeed on a cloud host.
+  api.videoHealth().then((h) => {
+    if (h.comfyui) return;
+    const status = $("#video-status");
+    setStatus(status, "Video rendering needs a local ComfyUI service — none is reachable from this server. Chat and images work.", true);
+    const button = $("#video-form button[type=submit]");
+    if (button) button.disabled = true;
+  }).catch(() => {});
+
   $("#video-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const button = e.target.querySelector("button[type=submit]");

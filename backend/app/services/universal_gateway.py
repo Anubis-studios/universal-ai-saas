@@ -502,7 +502,7 @@ class UniversalGateway:
                     if delta:
                         yield {"event": "delta", "text": delta}
                     if chunk.get("done"):
-                        yield {"event": "done"}
+                        yield {"event": "done", "model": d.name, "provider": d.provider.value}
                         return
             return
 
@@ -537,7 +537,7 @@ class UniversalGateway:
                     for part in parts:
                         if part.get("text"):
                             yield {"event": "delta", "text": part["text"]}
-            yield {"event": "done"}
+            yield {"event": "done", "model": d.name, "provider": d.provider.value}
             return
 
         payload = {
@@ -546,6 +546,18 @@ class UniversalGateway:
         }
         base = OPENAI_COMPATIBLE[d.provider]
         url = base if d.provider is ProviderType.POLLINATIONS else f"{base}/chat/completions"
+        usage: dict[str, Any] = {}
+        for attempt in range(2):
+            try:
+                async for event in self._stream_openai_lines(url, payload, d, usage):
+                    yield event
+                return
+            except ProviderError:
+                if attempt or d.provider is not ProviderType.POLLINATIONS:
+                    raise
+                await asyncio.sleep(1.5)
+
+    async def _stream_openai_lines(self, url, payload, d, usage):
         async with self._client.stream(
             "POST", url, json=payload, headers=self._headers(d.provider)
         ) as r:
@@ -565,7 +577,10 @@ class UniversalGateway:
                     continue
                 if delta:
                     yield {"event": "delta", "text": delta}
-        yield {"event": "done"}
+                if chunk.get("usage"):
+                    usage = chunk["usage"]
+            yield {"event": "done", "model": d.name, "provider": d.provider.value,
+                   "usage": usage}
 
     # ------------------------------------------------------------------ images
     async def generate_image(
@@ -587,12 +602,28 @@ class UniversalGateway:
         definition = self.resolve(model)
         if definition.category != "image":
             raise BadRequest(f"Model '{model}' does not generate images.")
-        if not await self.is_available(definition):
-            raise ProviderNotConfigured(
-                f"{definition.name} is unavailable. Set its API key or start the local service.",
-                provider=definition.provider.value,
-            )
         started = time.perf_counter()
+        errors: list[str] = []
+        # Try the requested model first, then fall back to any other available image model.
+        chain = [definition.name] + [m for m in IMAGE_PREFERENCE if m != definition.name]
+        for name in chain:
+            candidate = UNIVERSAL_REGISTRY.get(name)
+            if not candidate or candidate.category != "image":
+                continue
+            if not await self.is_available(candidate):
+                if name == definition.name:
+                    errors.append(f"{name}: not configured (missing key or local service)")
+                continue
+            try:
+                return await self._generate_with(candidate, prompt, negative_prompt, width, height, steps, started)
+            except (ProviderError, ProviderNotConfigured) as exc:
+                errors.append(f"{name}: {getattr(exc, 'message', str(exc))}")
+        raise ProviderError(
+            "image generation failed on every available model — " + " | ".join(errors),
+            provider=definition.provider.value,
+        )
+
+    async def _generate_with(self, definition, prompt, negative_prompt, width, height, steps, started):
         if definition.provider is ProviderType.STABLE_DIFFUSION:
             images = await self._sd_generate(prompt, negative_prompt, width, height, steps)
         elif definition.provider is ProviderType.POLLINATIONS:
@@ -649,9 +680,25 @@ class UniversalGateway:
             )
         except httpx.HTTPError as exc:
             raise ProviderError(f"network error: {exc}", provider="pollinations") from exc
+        if r.status_code == 402:
+            detail = ""
+            try:
+                detail = r.json().get("error", {}).get("message", "")
+            except ValueError:
+                detail = self._error_detail(r)
+            raise ProviderError(
+                detail or "free image limit reached (1 image per 45s per IP); retry shortly",
+                provider="pollinations", status_code=402,
+            )
         if r.status_code >= 400:
             raise ProviderError(self._error_detail(r), provider="pollinations")
-        mime = r.headers.get("content-type", "image/jpeg").split(";")[0]
+        content_type = r.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            raise ProviderError(
+                f"expected an image, got {content_type or 'no content-type'}: {r.text[:200]}",
+                provider="pollinations",
+            )
+        mime = content_type.split(";")[0]
         return [{"b64": __import__("base64").b64encode(r.content).decode(), "mime": mime}]
 
     async def _sd_generate(self, prompt, negative_prompt, width, height, steps):

@@ -57,6 +57,23 @@ async def get_model(model_name: str, request: Request) -> ModelInfo:
 
 
 # ----------------------------------------------------------------------- infer
+@router.post("/images/generate", response_model=RunResponse, tags=["inference"])
+async def generate_image(body: RunRequest, request: Request) -> RunResponse:
+    """Generate an image with the best available model (or an explicit one)."""
+    if not body.prompt:
+        raise HTTPException(400, "Provide 'prompt'.")
+    try:
+        width, height = (int(x) for x in body.image_size.lower().split("x"))
+    except ValueError as exc:
+        raise HTTPException(400, "image_size must look like 1024x1024") from exc
+    model = body.extra.get("model") or "auto"
+    result = await gateway(request).generate_image(
+        body.prompt, model, negative_prompt=body.negative_prompt,
+        width=width, height=height, steps=body.steps,
+    )
+    return RunResponse(**result)
+
+
 @router.post("/models/{model_name}/run", response_model=RunResponse, tags=["inference"])
 async def run_model(model_name: str, body: RunRequest, request: Request) -> RunResponse:
     gw = gateway(request)

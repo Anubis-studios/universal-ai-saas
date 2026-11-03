@@ -3,10 +3,12 @@ import { $, el, setStatus } from "../components/ui.js";
 
 export function initImage(models) {
   const select = $("#image-model");
+  select.append(el("option", { value: "auto" }, "Auto (best available)"));
   for (const m of models.filter((m) => m.category === "image")) {
     select.append(el("option", { value: m.name, disabled: !m.available },
       `${m.name}${m.available ? "" : " — unavailable"}`));
   }
+  select.value = "auto";
 
   $("#image-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -16,8 +18,9 @@ export function initImage(models) {
     setStatus(status, "Generating…");
     const prompt = $("#image-prompt").value.trim();
     try {
-      const res = await api.runModel(select.value, {
+      const res = await api.generateImage({
         prompt,
+        extra: select.value === "auto" ? {} : { model: select.value },
         negative_prompt: $("#image-negative").value.trim() || undefined,
         image_size: $("#image-size").value,
         steps: Number($("#image-steps").value),
