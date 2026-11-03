@@ -25,6 +25,7 @@ async def lifespan(app: FastAPI):
     configure_logging(settings.DEBUG)
     app.state.gateway = UniversalGateway()
     app.state.skills = AgenticSkillsService(app.state.gateway)
+    app.state.skills.warm()  # build the FTS5 skill index; ~0.5s, then instant search
     app.state.video = VideoEngine()
     logger.info("%s v%s starting", settings.APP_NAME, settings.APP_VERSION)
     try:
@@ -84,8 +85,15 @@ async def gateway_error_handler(_: Request, exc: GatewayError) -> JSONResponse:
 
 
 @app.get("/health", tags=["system"])
-async def health() -> dict:
-    return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
+async def health(request: Request) -> dict:
+    skills_db = getattr(request.app.state, "skills", None)
+    return {
+        "status": "ok",
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "skills": (skills_db.db.count if skills_db else 0),
+        "skill_categories": (len(skills_db.db.categories) if skills_db else 0),
+    }
 
 
 @app.get("/health/ready", tags=["system"])

@@ -90,8 +90,19 @@
       <section id="view-skills" class="view">
         <div class="panel">
           <h2>Agentic skills</h2>
-          <p class="hint">Deterministic tool code, with an LLM doing the language work.</p>
+          <p class="hint">
+            <span id="skill-total">2,877</span> skills, searchable offline — plus hand-written
+            tools with their own logic.
+          </p>
+          <div class="row">
+            <input id="skill-search" type="search" placeholder="Search skills — e.g. invoice, kubernetes, seo audit" autocomplete="off" />
+            <select id="skill-category"><option value="">All categories</option></select>
+          </div>
           <div id="skill-list" class="skill-grid"></div>
+          <div class="row">
+            <button type="button" class="ghost" id="skill-more" hidden>Load more</button>
+            <span class="hint" id="skill-count"></span>
+          </div>
           <form id="skill-form" class="stack" hidden>
             <h3 id="skill-title"></h3>
             <div id="skill-fields" class="stack"></div>

@@ -1,9 +1,14 @@
 """Agentic skills.
 
-Each skill is a real function with a typed contract, executed with whichever LLM
-the gateway can reach. The optional remote index only adds *descriptions* of
-community skills; execution always goes through code defined here, so a
-compromised index can never run arbitrary logic.
+Two tiers, both real:
+
+* A handful of hand-written skills with typed parameters and their own logic
+  (web research actually fetches pages, JSON extraction actually parses).
+* The full community catalogue (2,877 skills) made executable by running each
+  skill's own SKILL.md instructions through the model gateway. Skills are prompt
+  contracts, not code, so this needs no sandbox and cannot run arbitrary logic.
+
+Search runs on the bundled SQLite FTS5 index in ``skill_db``.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from bs4 import BeautifulSoup
 
 from app.core.config import settings
 from app.core.errors import BadRequest
+from app.services.skill_db import SkillDB
 from app.services.universal_gateway import UniversalGateway
 
 logger = logging.getLogger(__name__)
@@ -89,9 +95,20 @@ DEFAULT_SKILLS: list[dict[str, Any]] = [
 ]
 
 
+GENERIC_FIELDS: list[dict[str, Any]] = [
+    {"name": "input", "label": "Task or material", "type": "textarea", "required": True,
+     "placeholder": "What should this skill do? Paste the text, brief or data it needs."},
+    {"name": "context", "label": "Extra context (optional)", "type": "textarea", "required": False},
+]
+
 class AgenticSkillsService:
-    def __init__(self, gateway: UniversalGateway | None = None) -> None:
+    def __init__(self, gateway: UniversalGateway | None = None, db: SkillDB | None = None) -> None:
         self.gateway = gateway or UniversalGateway()
+        self.db = db or SkillDB()
+        # Index the hand-written skills too, so search and browse return one list.
+        if not self.db.count or "web-research" not in self.db.categories:
+            self.db.warm()
+            self.db.add([{**s, "source": "builtin"} for s in DEFAULT_SKILLS])
         self._registry: dict[str, SkillFn] = {
             "web-research": self._skill_web_research,
             "code-generator": self._skill_code_generator,
@@ -101,56 +118,104 @@ class AgenticSkillsService:
         }
 
     async def close(self) -> None:
+        self.db.close()
         await self.gateway.close()
 
     # ------------------------------------------------------------------ listing
-    async def list_skills(self) -> tuple[list[dict[str, Any]], str]:
-        """Merge the built-in catalogue with the remote index (descriptions only)."""
-        remote_source = "builtin"
-        try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                r = await client.get(settings.SKILLS_INDEX_URL)
-                r.raise_for_status()
-                payload = r.json()
-            items = payload if isinstance(payload, list) else payload.get("skills", [])
-            by_name = {s["name"]: s for s in DEFAULT_SKILLS}
-            for item in items:
-                name = item.get("name") or item.get("slug")
-                if not name:
-                    continue
-                if name in by_name:
-                    by_name[name].setdefault("description", item.get("description", ""))
-                else:
-                    by_name[name] = {
-                        "name": name,
-                        "title": item.get("title") or name.replace("-", " ").title(),
-                        "category": item.get("category", "community"),
-                        "description": item.get("description", ""),
-                        "params": item.get("params", []),
-                        "fields": item.get("fields", []),
-                        "executable": False,
-                    }
-            merged = []
-            for name, entry in by_name.items():
-                entry = dict(entry)
-                entry.setdefault("title", name.replace("-", " ").title())
-                entry.setdefault("fields", [])
-                entry["executable"] = name in self._registry
-                merged.append(entry)
-            return merged, "builtin+remote"
-        except Exception as exc:  # noqa: BLE001 - the index is best effort
-            logger.info("skills index unavailable (%s); using built-in catalogue", exc)
-            return [dict(s, executable=True) for s in DEFAULT_SKILLS], remote_source
+    def warm(self) -> None:
+        """Build the search index at startup so the first query is instant."""
+        self.db.warm()
+
+    def search(
+        self,
+        query: str | None = None,
+        category: str | None = None,
+        limit: int = 24,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Ranked catalogue search merged with the executable built-ins."""
+        found = self.db.search(query, category, limit, offset)
+        skills = []
+        for row in found["skills"]:
+            name = row["name"]
+            bespoke = next((s for s in DEFAULT_SKILLS if s["name"] == name), None)
+            entry = {
+                "name": name,
+                "title": row["title"] or name.replace("-", " ").title(),
+                "category": row["category"] or "uncategorised",
+                "description": row["description"],
+                "risk": row["risk"],
+                "source": row["source"],
+                "tags": [t for t in (row.get("tags") or "").split() if t][:8],
+                "executable": True,
+                "tier": "builtin" if bespoke else "catalogue",
+                "params": (bespoke or {}).get("params", ["input", "context"]),
+                "fields": (bespoke or {}).get("fields", GENERIC_FIELDS),
+            }
+            skills.append(entry)
+        return {
+            "skills": skills,
+            "total": found["total"],
+            "count": len(skills),
+            "limit": max(1, min(int(limit), 100)),
+            "offset": max(0, int(offset)),
+            "query": found["query"],
+            "mode": found["mode"],
+            "categories": self.db.categories,
+            "source": "catalogue+builtin",
+        }
+
+    async def list_skills(self, limit: int = 100_000) -> tuple[list[dict[str, Any]], str]:
+        """Backwards-compatible flat listing (the whole catalogue by default)."""
+        page = self.search(limit=min(limit, 100), offset=0)
+        out, offset = page["skills"], page["count"]
+        while offset < page["total"] and offset < limit:
+            more = self.search(limit=min(100, limit - offset), offset=offset)
+            if not more["skills"]:
+                break
+            out += more["skills"]
+            offset += more["count"]
+        return out, "catalogue+builtin"
 
     # ---------------------------------------------------------------- execution
     async def execute(self, skill_name: str, params: dict[str, Any]) -> dict[str, Any]:
         fn = self._registry.get(skill_name)
-        if fn is None:
-            raise BadRequest(
-                f"Skill '{skill_name}' has no executor. Executable: {sorted(self._registry)}"
-            )
-        result = await fn(params, self.gateway)
-        return {"skill": skill_name, **result}
+        if fn is not None:
+            return {"skill": skill_name, "tier": "builtin", **(await fn(params, self.gateway))}
+        return await self._skill_catalogue(skill_name, params)
+
+    async def _skill_catalogue(self, skill_name: str, params: dict[str, Any]) -> dict[str, Any]:
+        """Run a catalogue skill by following its own SKILL.md instructions."""
+        record = self.db.get(skill_name)
+        if record is None:
+            raise BadRequest(f"Unknown skill '{skill_name}'. Search /api/v1/skills?q=... to find one.")
+        task = str(params.get("input") or params.get("task") or params.get("prompt") or "").strip()
+        context = str(params.get("context") or "").strip()
+        if not task:
+            raise BadRequest(f"Skill '{skill_name}' needs 'input' (the task or material to work on).")
+
+        instructions = (record.get("body") or "").strip()
+        if not instructions:
+            raise BadRequest(f"Skill '{skill_name}' has no instructions in the index.")
+
+        prompt = (
+            f"You are executing the '{record['name']}' skill.\n"
+            f"Follow its instructions exactly. Produce the deliverable the skill asks for, "
+            f"not a description of how you would produce it.\n\n"
+            f"--- SKILL INSTRUCTIONS ---\n{instructions}\n--- END INSTRUCTIONS ---\n\n"
+            f"--- TASK ---\n{task[:12000]}\n--- END TASK ---\n"
+        )
+        if context:
+            prompt += f"\n--- CONTEXT ---\n{context[:8000]}\n--- END CONTEXT ---\n"
+
+        output = await self.gateway.complete(prompt, max_tokens=2000, temperature=0.4)
+        return {
+            "skill": record["name"],
+            "tier": "catalogue",
+            "category": record["category"],
+            "title": record["title"],
+            "result": output.strip(),
+        }
 
     # ------------------------------------------------------------------ skills
     async def _skill_web_research(self, params: dict[str, Any], gw: UniversalGateway) -> dict:

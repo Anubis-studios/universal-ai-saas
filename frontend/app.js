@@ -33,7 +33,7 @@ async function boot() {
     initChat(models);
     initImage(models);
     initVideo();
-    initSkills(skills.skills);
+    initSkills(skills);
     initModels(models);
   } catch (err) {
     $("#provider-summary").textContent = "backend unreachable — set the API URL";

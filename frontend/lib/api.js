@@ -51,7 +51,14 @@ export const api = {
   generateImage: (payload) => request("/images/generate", { method: "POST", body: payload }),
   generateVideo: (payload) => request("/video/generate", { method: "POST", body: payload }),
   videoHealth: () => request("/video/health"),
-  skills: () => request("/skills"),
+  skills: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== "" && v != null),
+    ).toString();
+    return request(`/skills${qs ? `?${qs}` : ""}`);
+  },
+  skill: (name) => request(`/skills/${encodeURIComponent(name)}`),
+  skillCategories: () => request("/skills/categories"),
   runSkill: (name, params) => request(`/skills/${encodeURIComponent(name)}/run`, { method: "POST", body: { params } }),
 };
 

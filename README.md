@@ -107,7 +107,9 @@ GET  /api/v1/models                     # catalogue + availability
 GET  /api/v1/models/{name}
 POST /api/v1/models/{name}/run          # text | image | embedding, by model category
 POST /api/v1/chat                       # {"prompt" | "messages", "model": "auto", "stream": true}
-GET  /api/v1/skills
+GET  /api/v1/skills                     # ?q= search, ?category=, ?limit=&offset=
+GET  /api/v1/skills/categories          # category -> count
+GET  /api/v1/skills/{name}              # full skill detail
 POST /api/v1/skills/{name}/run          # {"params": {...}} or {"inputs": {...}}
 POST /api/v1/video/generate             # ComfyUI SVD workflow
 GET  /api/v1/video/health
@@ -128,12 +130,32 @@ Streaming uses server-sent events, so `curl -N` works too.
 backend/app/core/        config (pydantic-settings), errors, logging
 backend/app/services/    universal_gateway.py  provider adapters, fallback, streaming
                          agentic_skills.py     skill registry + executors
+                         skill_db.py           SQLite FTS5 search over the skill catalogue
+backend/app/data/        skills_index.json.gz  2,772 catalogued skills (built, not hand-written)
+scripts/                 build_skills_index.py regenerates that index from upstream
                          video_engine.py       ComfyUI SVD driver
 backend/app/api/v1/      universal.py endpoint module
 backend/app/workflows/   svd_img2vid.json (ComfyUI graph, API format)
 backend/tests/           httpx-mocked tests, no network needed
 frontend/                app.js + pages/ + styles/
 ```
+
+## Skill catalogue
+
+2,772 skills ship with the platform, each executable through the gateway. The index is
+generated, never hand-maintained:
+
+```bash
+# point at an agentic-awesome-skills checkout
+python scripts/build_skills_index.py /path/to/agentic-awesome-skills-main
+```
+
+The script parses `skills/*/SKILL.md` front matter, prefers the upstream classified
+`skills_index.json` for category/risk/source, and writes a gzipped JSON index. At
+startup the API loads it into SQLite and builds an FTS5 table, so search is ranked
+BM25 rather than substring matching, and falls back to `LIKE` where FTS5 is unavailable.
+Each catalogue skill takes free-form `input`/`context` params and is executed by
+injecting its instructions into the chosen model.
 
 ## Tests
 

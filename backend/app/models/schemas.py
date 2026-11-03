@@ -90,12 +90,22 @@ class SkillInfo(BaseModel):
     params: list[str] = Field(default_factory=list)
     fields: list[SkillField] = Field(default_factory=list)
     executable: bool = True
+    tier: str = "catalogue"
+    risk: str = "safe"
+    source: str = "community"
+    tags: list[str] = Field(default_factory=list)
 
 
 class SkillsResponse(BaseModel):
     skills: list[SkillInfo]
     count: int
     source: str
+    total: int = 0
+    limit: int = 24
+    offset: int = 0
+    query: str = ""
+    mode: str = "browse"
+    categories: dict[str, int] = Field(default_factory=dict)
 
 
 class SkillRequest(BaseModel):

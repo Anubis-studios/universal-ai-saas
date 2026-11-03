@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
@@ -149,9 +149,40 @@ async def chat(request: Request, body: RunRequest) -> Any:
 
 # ---------------------------------------------------------------------- skills
 @router.get("/skills", response_model=SkillsResponse, tags=["skills"])
-async def list_skills(request: Request) -> SkillsResponse:
-    items, source = await skills(request).list_skills()
-    return SkillsResponse(skills=items, count=len(items), source=source)
+async def list_skills(
+    request: Request,
+    q: str | None = Query(default=None, description="Search terms; ranked with BM25."),
+    category: str | None = Query(default=None, description="Restrict to one category."),
+    limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> SkillsResponse:
+    """Search the whole catalogue (2,877 skills, SQLite FTS5). Empty `q` browses."""
+    return SkillsResponse(**skills(request).search(q, category, limit, offset))
+
+
+@router.get("/skills/categories", tags=["skills"])
+async def skill_categories(request: Request) -> dict[str, Any]:
+    svc = skills(request)
+    return {"count": len(svc.db.categories), "categories": svc.db.categories}
+
+
+@router.get("/skills/search", tags=["skills"])
+async def search_skills(
+    request: Request,
+    q: str = Query(min_length=1),
+    category: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> SkillsResponse:
+    return SkillsResponse(**skills(request).search(q, category, limit, offset))
+
+
+@router.get("/skills/{skill_name}", tags=["skills"])
+async def get_skill(skill_name: str, request: Request) -> dict[str, Any]:
+    record = skills(request).db.get(skill_name)
+    if record is None:
+        raise HTTPException(404, f"No skill named '{skill_name}'.")
+    return {**record, "executable": True}
 
 
 @router.post("/skills/{skill_name}/run", tags=["skills"])
