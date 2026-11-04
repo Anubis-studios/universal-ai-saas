@@ -46,6 +46,8 @@ async function request(path, { method = "GET", body, signal } = {}) {
 
 export const api = {
   models: () => request("/models"),
+  telemetry: () => request("/system/telemetry"),
+  activity: (limit = 8) => request(`/system/activity?limit=${limit}`),
   chat: (payload) => request("/chat", { method: "POST", body: payload }),
   runModel: (name, payload) => request(`/models/${encodeURIComponent(name)}/run`, { method: "POST", body: payload }),
   generateImage: (payload) => request("/images/generate", { method: "POST", body: payload }),

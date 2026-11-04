@@ -6,20 +6,25 @@
   <title>Universal AI — one interface for every model</title>
   <meta name="description" content="Chat, generate images and video, build playable games and run 2,700+ agentic skills on free and local AI models." />
   <link rel="stylesheet" href="/styles/app.css" />
+  <link rel="stylesheet" href="/styles/hud.css" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2341c3f1'/%3E%3Cpath d='M9 22V10h2.6l4.4 7 4.4-7H23v12h-2.4v-7.4L16 22l-4.6-7.4V22z' fill='%23050b16'/%3E%3C/svg%3E" />
 </head>
 <body>
   <div id="app">
-    <header class="topbar">
-      <div class="brand">
-        <span class="mark">U</span>
-        <div>
+    <header class="hud-bar">
+      <div class="hud-brand">
+        <span class="hud-logo" aria-hidden="true">
+          <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".5"/><circle cx="20" cy="20" r="12.5" fill="none" stroke="currentColor" stroke-width="1" opacity=".85"/><circle cx="20" cy="20" r="4.5" fill="currentColor" opacity=".9"/><g stroke="currentColor" stroke-width="1.2"><path d="M20 2v6M20 32v6M2 20h6M32 20h6"/></g></svg>
+        </span>
+        <div class="hud-title">
           <strong>Universal AI</strong>
-          <small id="provider-summary">linking providers…</small>
+          <small>NEURAL INTERFACE <span class="dim">v1.0.1</span></small>
         </div>
       </div>
-      <nav class="tabs" role="tablist">
-        <button class="tab is-active" data-view="chat" role="tab">Chat</button>
+
+      <nav class="tabs hud-tabs" role="tablist">
+        <button class="tab is-active" data-view="dashboard" role="tab">Dashboard</button>
+        <button class="tab" data-view="chat" role="tab">Chat</button>
         <button class="tab" data-view="game" role="tab">Game</button>
         <button class="tab" data-view="image" role="tab">Image</button>
         <button class="tab" data-view="video" role="tab">Video</button>
@@ -27,10 +32,131 @@
         <button class="tab" data-view="library" role="tab">Library</button>
         <button class="tab" data-view="models" role="tab">Models</button>
       </nav>
-      <button id="settings-toggle" class="ghost" title="Connection settings">⚙︎</button>
+
+      <div class="hud-counters">
+        <span class="counter"><i>CPU</i><b id="hud-cpu">—</b></span>
+        <span class="counter"><i>MEM</i><b id="hud-mem">—</b></span>
+        <span class="counter"><i>SYS</i><b id="hud-uptime">—</b></span>
+      </div>
+
+      <div class="hud-status">
+        <span class="dot" id="hud-dot"></span>
+        <span id="provider-summary">linking providers…</span>
+      </div>
+      <button id="settings-toggle" class="hud-icon" title="Connection settings" aria-label="Connection settings">⚙︎</button>
     </header>
 
     <main>
+      <!-- ----------------------------------------------------- dashboard -->
+      <section id="view-dashboard" class="view is-active">
+        <div class="hud-grid">
+          <!-- ------------------------------------------------ left column -->
+          <div class="hud-col hud-col-left">
+            <section class="hud-panel corner">
+              <h3 class="panel-head">SYSTEM LOGS <span class="panel-tag" id="log-count">—</span></h3>
+              <ul class="log-list" id="hud-logs" aria-live="polite"></ul>
+            </section>
+
+            <section class="hud-panel corner">
+              <h3 class="panel-head">ACTIVE TOOL EXECUTION</h3>
+              <div class="tool-rows">
+                <div class="tool-row"><span>Selected model</span><b id="hud-model">—</b></div>
+                <div class="tool-row"><span>Cascade router</span><b class="ok">ACTIVE</b></div>
+                <div class="tool-row"><span>Tool</span><b id="hud-tool">—</b></div>
+                <div class="tool-row"><span>Status</span><b id="hud-tool-status" class="ok">STANDBY</b></div>
+              </div>
+              <div class="tool-term" id="hud-term" aria-live="polite"></div>
+            </section>
+
+            <section class="hud-panel corner">
+              <h3 class="panel-head">SYSTEM DIAGNOSTICS</h3>
+              <div class="diag-list" id="hud-diag"></div>
+            </section>
+
+            <section class="hud-panel corner">
+              <h3 class="panel-head">THREAD POOL <span class="panel-tag" id="thread-count">—</span></h3>
+              <div class="thread-grid" id="hud-threads"></div>
+            </section>
+          </div>
+
+          <!-- --------------------------------------------------- centre -->
+          <div class="hud-col hud-col-mid">
+            <div class="mid-head">
+              <h2>NEURAL TELEMETRY</h2>
+              <span class="live"><i></i>LIVE</span>
+            </div>
+
+            <div class="tiles">
+              <div class="tile"><i>UPTIME</i><b id="tile-uptime">—</b></div>
+              <div class="tile"><i>AGENTS</i><b id="tile-agents">—</b></div>
+              <div class="tile"><i>SKILLS</i><b id="tile-skills">—</b></div>
+              <div class="tile"><i>RECORDS</i><b id="tile-records">—</b></div>
+            </div>
+
+            <div class="orb-stage">
+              <canvas id="hud-orb" width="640" height="640" aria-label="Neural core visualiser"></canvas>
+              <span class="orb-label orb-top">SEMANTIC PROCESSOR</span>
+              <span class="orb-label orb-left">API STATUS</span>
+              <span class="orb-label orb-right">QUANTUM MATRIX</span>
+              <span class="orb-label orb-bottom">HOST LOAD <b id="orb-load">—</b></span>
+            </div>
+
+            <div class="classes">
+              <span><i style="--c:var(--cyan)"></i>LANGUAGE MODEL</span>
+              <span><i style="--c:var(--amber)"></i>VISION</span>
+              <span><i style="--c:#6f8dff"></i>SKILL ROUTER</span>
+              <span><i style="--c:#4ade80"></i>TOOL CALLS</span>
+            </div>
+          </div>
+
+          <!-- ---------------------------------------------------- right -->
+          <div class="hud-col hud-col-right">
+            <section class="hud-panel corner">
+              <h3 class="panel-head">WEB DATA EXTRACTION</h3>
+              <div class="chan-list" id="hud-channels">
+                <div class="chan" data-chan="web"><span class="cname">Live Web Search</span><span class="cmeter"><i></i></span><b class="cval">—</b></div>
+                <div class="chan" data-chan="scrape"><span class="cname">Data Scraper</span><span class="cmeter"><i></i></span><b class="cval">—</b></div>
+                <div class="chan" data-chan="api"><span class="cname">API Endpoints</span><span class="cmeter"><i></i></span><b class="cval">—</b></div>
+                <div class="chan" data-chan="cache"><span class="cname">Caches</span><span class="cmeter"><i></i></span><b class="cval">—</b></div>
+              </div>
+              <div class="legend"><span><i class="ok"></i>STREAMING</span><span><i class="warn"></i>THROTTLED</span></div>
+            </section>
+
+            <section class="hud-panel corner">
+              <h3 class="panel-head">GLOBAL NETWORK FLOW</h3>
+              <svg class="worldmap" viewBox="0 0 320 150" id="hud-map" aria-hidden="true"></svg>
+              <div class="map-stats">
+                <span><i>LATENCY</i><b id="map-latency">—</b></span>
+                <span><i>UPTIME</i><b id="map-uptime">—</b></span>
+                <span><i>NODES</i><b id="map-nodes">—</b></span>
+              </div>
+            </section>
+
+            <section class="hud-panel corner">
+              <h3 class="panel-head">QUANTUM MATRIX</h3>
+              <div class="spark">
+                <span class="spark-val" id="spark1-val">—</span>
+                <canvas class="spark-canvas" id="spark1" width="420" height="70"></canvas>
+                <i class="spark-cap">REQUEST LATENCY (ms)</i>
+              </div>
+              <div class="spark">
+                <span class="spark-val" id="spark2-val">—</span>
+                <canvas class="spark-canvas" id="spark2" width="420" height="70"></canvas>
+                <i class="spark-cap">MEMORY PRESSURE (%)</i>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <form class="hud-command" id="hud-command-form">
+          <span class="command-glyph" aria-hidden="true">▸</span>
+          <input id="hud-command-input" placeholder="EXECUTE COMMAND" autocomplete="off" aria-label="Execute a command" />
+          <span class="command-sync" id="hud-sync">COMMAND BUFFER SYNCHRONIZED</span>
+          <select id="hud-model-select" aria-label="Model"></select>
+          <button type="submit" class="hud-execute">EXECUTE</button>
+        </form>
+      </section>
+
       <!-- ---------------------------------------------------------- chat -->
       <section id="view-chat" class="view is-active">
         <div class="chat-shell">
