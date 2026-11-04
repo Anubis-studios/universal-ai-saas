@@ -50,6 +50,8 @@ export const api = {
   runModel: (name, payload) => request(`/models/${encodeURIComponent(name)}/run`, { method: "POST", body: payload }),
   generateImage: (payload) => request("/images/generate", { method: "POST", body: payload }),
   generateVideo: (payload) => request("/video/generate", { method: "POST", body: payload }),
+  generateGame: (payload) => request("/games/generate", { method: "POST", body: payload }),
+  games: () => request("/games"),
   videoHealth: () => request("/video/health"),
   skills: (params = {}) => {
     const qs = new URLSearchParams(

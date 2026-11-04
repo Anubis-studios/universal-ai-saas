@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.errors import GatewayError
 from app.core.logging import configure_logging
 from app.services.agentic_skills import AgenticSkillsService
+from app.services.game_forge import GAMES_DIR, GameForge
 from app.services.universal_gateway import UniversalGateway
 from app.services.video_engine import OUTPUT_DIR, VideoEngine
 
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
     app.state.skills = AgenticSkillsService(app.state.gateway)
     app.state.skills.warm()  # build the FTS5 skill index; ~0.5s, then instant search
     app.state.video = VideoEngine()
+    app.state.games = GameForge(app.state.gateway)
     logger.info("%s v%s starting", settings.APP_NAME, settings.APP_VERSION)
     try:
         yield
@@ -103,8 +105,10 @@ async def readiness(request: Request) -> dict:
 
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+GAMES_DIR.mkdir(parents=True, exist_ok=True)
 app.include_router(universal.router, prefix=settings.API_PREFIX)
 app.mount("/media", StaticFiles(directory=OUTPUT_DIR), name="media")
+app.mount("/games", StaticFiles(directory=GAMES_DIR, html=True), name="games")
 
 # Serve the bundled single-page frontend when it ships alongside the backend.
 _frontend = Path(settings.FRONTEND_DIR).resolve()

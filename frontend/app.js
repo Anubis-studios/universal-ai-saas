@@ -1,6 +1,7 @@
 import { api, setApiBase, setApiKey } from "./lib/api.js";
 import { $, $$ } from "./components/ui.js";
 import { initChat } from "./pages/chat.js";
+import { initGame } from "./pages/game.js";
 import { initImage } from "./pages/image.js";
 import { initVideo } from "./pages/video.js";
 import { initSkills } from "./pages/skills.js";
@@ -31,6 +32,7 @@ async function boot() {
     const available = models.filter((m) => m.available).length;
     $("#provider-summary").textContent = `${available}/${models.length} models ready`;
     initChat(models);
+    initGame(models);
     initImage(models);
     initVideo();
     initSkills(skills);

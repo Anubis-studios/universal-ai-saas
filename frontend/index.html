@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Universal AI · one API for every model</title>
-  <meta name="description" content="Chat, generate images and video, and run agentic skills on free and local AI models." />
+  <title>Universal AI — one interface for every model</title>
+  <meta name="description" content="Chat, generate images and video, build playable games and run 2,700+ agentic skills on free and local AI models." />
   <link rel="stylesheet" href="/styles/app.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c5cff'/%3E%3Cpath d='M9 22V10h2.6l4.4 7 4.4-7H23v12h-2.4v-7.4L16 22l-4.6-7.4V22z' fill='white'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2341c3f1'/%3E%3Cpath d='M9 22V10h2.6l4.4 7 4.4-7H23v12h-2.4v-7.4L16 22l-4.6-7.4V22z' fill='%23050b16'/%3E%3C/svg%3E" />
 </head>
 <body>
   <div id="app">
@@ -15,30 +15,32 @@
         <span class="mark">U</span>
         <div>
           <strong>Universal AI</strong>
-          <small id="provider-summary">checking providers…</small>
+          <small id="provider-summary">linking providers…</small>
         </div>
       </div>
       <nav class="tabs" role="tablist">
         <button class="tab is-active" data-view="chat" role="tab">Chat</button>
+        <button class="tab" data-view="game" role="tab">Game</button>
         <button class="tab" data-view="image" role="tab">Image</button>
         <button class="tab" data-view="video" role="tab">Video</button>
         <button class="tab" data-view="skills" role="tab">Skills</button>
         <button class="tab" data-view="models" role="tab">Models</button>
       </nav>
-      <button id="settings-toggle" class="ghost" title="API base URL">⚙︎</button>
+      <button id="settings-toggle" class="ghost" title="Connection settings">⚙︎</button>
     </header>
 
     <main>
+      <!-- ---------------------------------------------------------- chat -->
       <section id="view-chat" class="view is-active">
         <div class="chat-shell">
           <div class="chat-log" id="chat-log" aria-live="polite">
             <div class="empty" id="chat-empty">
-              <h1>Ask anything, on any model.</h1>
-              <p>Requests route automatically across configured providers, and fall back when one is rate-limited.</p>
+              <h1>One deck. Every model.</h1>
+              <p>Your prompt routes to whichever free provider is alive, and falls back the moment one is rate-limited. No keys to juggle.</p>
             </div>
           </div>
           <form class="composer" id="chat-form">
-            <textarea id="chat-input" rows="1" placeholder="Message the model… (Enter to send, Shift+Enter for a newline)"></textarea>
+            <textarea id="chat-input" rows="1" placeholder="Transmit a prompt…  (Enter sends, Shift+Enter breaks the line)"></textarea>
             <div class="composer-actions">
               <select id="chat-model" aria-label="Model"></select>
               <label class="switch"><input type="checkbox" id="chat-stream" checked /> Stream</label>
@@ -48,9 +50,49 @@
         </div>
       </section>
 
+      <!-- ---------------------------------------------------------- game -->
+      <section id="view-game" class="view">
+        <div class="panel">
+          <h2>Game forge</h2>
+          <p>Describe a game in one sentence. It designs the mechanics, writes the whole engine, and hands back a playable HTML5 build — no assets, no dependencies, no follow-up prompts.</p>
+          <form id="game-form" class="stack">
+            <label>Your game
+              <textarea id="game-prompt" rows="3" required placeholder="A neon speeder dodging asteroids in a collapsing wormhole, collect fuel cells, ramping speed"></textarea>
+            </label>
+            <div class="genre-chips" id="game-genres">
+              <button type="button" class="chip" data-genre="">Auto</button>
+              <button type="button" class="chip" data-genre="arcade">Arcade</button>
+              <button type="button" class="chip" data-genre="platformer">Platformer</button>
+              <button type="button" class="chip" data-genre="shooter">Shooter</button>
+              <button type="button" class="chip" data-genre="puzzle">Puzzle</button>
+              <button type="button" class="chip" data-genre="runner">Runner</button>
+              <button type="button" class="chip" data-genre="tower-defense">Tower defence</button>
+              <button type="button" class="chip" data-genre="rpg">RPG</button>
+              <button type="button" class="chip" data-genre="sports">Sports</button>
+            </div>
+            <div class="row">
+              <label>Model<select id="game-model"></select></label>
+              <button class="primary" type="submit" id="game-build">Forge game</button>
+            </div>
+          </form>
+          <div class="game-log" id="game-log"></div>
+          <div class="game-stage" id="game-stage">
+            <div class="placeholder" id="game-placeholder">awaiting build</div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <a id="game-open" class="hint" href="#" target="_blank" rel="noopener" hidden>open in new tab ↗</a>
+            <button type="button" class="ghost" id="game-download" hidden>Download .html</button>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <select id="game-library"><option value="">— previous builds —</option></select>
+          </div>
+        </div>
+      </section>
+
+      <!-- --------------------------------------------------------- image -->
       <section id="view-image" class="view">
         <div class="panel">
-          <h2>Image generation</h2>
+          <h2>Image synthesis</h2>
           <form id="image-form" class="stack">
             <label>Prompt<textarea id="image-prompt" rows="3" placeholder="A lighthouse in a storm, cinematic lighting" required></textarea></label>
             <label>Negative prompt<input id="image-negative" placeholder="blurry, watermark" /></label>
@@ -68,10 +110,11 @@
         </div>
       </section>
 
+      <!-- --------------------------------------------------------- video -->
       <section id="view-video" class="view">
         <div class="panel">
-          <h2>Video generation</h2>
-          <p class="hint">Runs locally: a Stable Diffusion still, animated by Stable Video Diffusion on ComfyUI. No cloud credits.</p>
+          <h2>Motion synthesis</h2>
+          <p class="hint">Local pipeline: a Stable Diffusion still animated by Stable Video Diffusion on ComfyUI. No cloud credits.</p>
           <form id="video-form" class="stack">
             <label>Prompt<textarea id="video-prompt" rows="2" placeholder="Slow dolly over a neon-lit Tokyo street, rain" required></textarea></label>
             <div class="row">
@@ -80,18 +123,19 @@
               <label>FPS<input id="video-fps" type="number" value="8" min="4" max="30" /></label>
               <label>Motion<input id="video-motion" type="number" value="127" min="1" max="255" /></label>
             </div>
-            <button class="primary" type="submit">Generate video</button>
+            <button class="primary" type="submit">Render video</button>
           </form>
           <div id="video-status" class="status"></div>
           <div id="video-result"></div>
         </div>
       </section>
 
+      <!-- -------------------------------------------------------- skills -->
       <section id="view-skills" class="view">
         <div class="panel">
           <h2>Agentic skills</h2>
           <p class="hint">
-            <span id="skill-total">2,877</span> skills, searchable offline — plus hand-written
+            <span id="skill-total">2,877</span> skills, full-text searchable offline — plus hand-written
             tools with their own logic.
           </p>
           <div class="row">
@@ -115,6 +159,7 @@
         </div>
       </section>
 
+      <!-- -------------------------------------------------------- models -->
       <section id="view-models" class="view">
         <div class="panel">
           <h2>Model catalogue</h2>

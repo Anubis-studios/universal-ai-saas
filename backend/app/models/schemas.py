@@ -124,3 +124,14 @@ class VideoRequest(BaseModel):
     motion_bucket_id: int = Field(default=127, ge=1, le=255)
     seed: int | None = None
     init_image_b64: str | None = None
+
+
+class GameRequest(BaseModel):
+    """One prompt in, one playable game out."""
+
+    prompt: str = Field(min_length=4, max_length=4000)
+    model: str = "auto"
+    genre: str | None = Field(
+        default=None,
+        description="Optional nudge: arcade, platformer, shooter, puzzle, runner, tower-defense, rpg, sports",
+    )

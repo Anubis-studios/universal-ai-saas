@@ -377,6 +377,10 @@ class UniversalGateway:
             "top_p": top_p,
             "stream": False,
         }
+        if d.provider is ProviderType.POLLINATIONS:
+            # Keyless endpoint serves a reasoning model: without this it burns the
+            # whole token budget thinking and returns nothing.
+            payload["reasoning_effort"] = "low"
         url = base if d.provider is ProviderType.POLLINATIONS else f"{base}/chat/completions"
         try:
             r = await self._client.post(url, json=payload, headers=self._headers(d.provider))

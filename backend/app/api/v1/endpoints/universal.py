@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.errors import GatewayError
 from app.models.schemas import (
     DiscoverResponse,
+    GameRequest,
     ModelInfo,
     RunRequest,
     RunResponse,
@@ -18,6 +19,7 @@ from app.models.schemas import (
     VideoRequest,
 )
 from app.services.agentic_skills import AgenticSkillsService
+from app.services.game_forge import GAMES_DIR, GameForge
 from app.services.universal_gateway import UniversalGateway
 from app.services.video_engine import VideoEngine
 
@@ -34,6 +36,10 @@ def skills(request: Request) -> AgenticSkillsService:
 
 def video(request: Request) -> VideoEngine:
     return request.app.state.video
+
+
+def forge(request: Request) -> GameForge:
+    return request.app.state.games
 
 
 # ------------------------------------------------------------------- catalogue
@@ -210,6 +216,33 @@ async def generate_video(body: VideoRequest, request: Request) -> dict[str, Any]
         width=body.width, height=body.height, fps=body.fps,
         motion_bucket_id=body.motion_bucket_id, seed=body.seed,
     )
+
+
+# ----------------------------------------------------------------------- games
+@router.post("/games/generate", tags=["games"])
+async def generate_game(body: GameRequest, request: Request) -> dict[str, Any]:
+    """Single prompt -> design -> complete playable HTML5 game, served at /games/{file}."""
+    try:
+        return await forge(request).generate(body.prompt, model=body.model, genre=body.genre)
+    except GatewayError as exc:
+        raise HTTPException(502, exc.message) from exc
+
+
+@router.get("/games", tags=["games"])
+async def list_games(limit: int = Query(default=24, ge=1, le=100)) -> dict[str, Any]:
+    files = sorted(GAMES_DIR.glob("*.html"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return {
+        "count": len(files),
+        "games": [
+            {
+                "filename": f.name,
+                "url": f"/games/{f.name}",
+                "bytes": f.stat().st_size,
+                "title": f.stem.rsplit("-", 2)[0].replace("-", " ").title(),
+            }
+            for f in files[:limit]
+        ],
+    }
 
 
 # ------------------------------------------------------------------ embeddings

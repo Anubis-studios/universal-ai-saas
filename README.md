@@ -14,7 +14,8 @@ Backend: FastAPI + httpx (async end to end). Frontend: vanilla ES modules, no bu
 | Image | Hugging Face (FLUX.1-schnell, SDXL), SD WebUI, ComfyUI | HF yes, local no |
 | Video | ComfyUI + Stable Video Diffusion (img2vid) | no |
 | Embeddings | Google, Hugging Face, Ollama | yes for hosted |
-| Skills | web research, code gen, summarise, extract JSON, translate | uses whichever text model is up |
+| Skills | 2,772 catalogued skills, all executable | uses whichever text model is up |
+| Games | full single-file HTML5 game from one sentence | no — keyless fallback works |
 
 `GET /api/v1/models` reports `available` per model, computed from the keys and endpoints
 actually configured. Anything unavailable is hidden from the model picker rather than
@@ -111,6 +112,8 @@ GET  /api/v1/skills                     # ?q= search, ?category=, ?limit=&offset
 GET  /api/v1/skills/categories          # category -> count
 GET  /api/v1/skills/{name}              # full skill detail
 POST /api/v1/skills/{name}/run          # {"params": {...}} or {"inputs": {...}}
+POST /api/v1/games/generate             # {"prompt": "...", "genre": "arcade"} -> playable HTML
+GET  /games/{file}                      # the generated game, ready to play
 POST /api/v1/video/generate             # ComfyUI SVD workflow
 GET  /api/v1/video/health
 GET  /media/{file}                      # generated images and MP4s
@@ -131,14 +134,36 @@ backend/app/core/        config (pydantic-settings), errors, logging
 backend/app/services/    universal_gateway.py  provider adapters, fallback, streaming
                          agentic_skills.py     skill registry + executors
                          skill_db.py           SQLite FTS5 search over the skill catalogue
+                         game_forge.py         prompt -> design -> validated HTML5 game
 backend/app/data/        skills_index.json.gz  2,772 catalogued skills (built, not hand-written)
 scripts/                 build_skills_index.py regenerates that index from upstream
                          video_engine.py       ComfyUI SVD driver
 backend/app/api/v1/      universal.py endpoint module
 backend/app/workflows/   svd_img2vid.json (ComfyUI graph, API format)
 backend/tests/           httpx-mocked tests, no network needed
-frontend/                app.js + pages/ + styles/
+frontend/                app.js + pages/ + styles/  (dark HUD shell)
 ```
+
+## Game generation
+
+One sentence in, one playable game out — not a template with your words swapped in.
+
+```bash
+curl -s localhost:8000/api/v1/games/generate \
+  -H 'content-type: application/json' \
+  -d '{"prompt": "A neon speeder dodging asteroids in a collapsing wormhole", "genre": "arcade"}'
+```
+
+Two stages: the model writes a short design spec, then writes the whole game as a single
+self-contained HTML file. `validate_game()` then rejects anything that is not actually a
+game — it requires a doctype, a closing `</html>`, a `<canvas>`, a script, an animation
+loop, input handlers, and no external asset URLs, so the result always runs offline.
+Failures surface as a real error, never as a broken page.
+
+Free providers cap output around 4 KB, which truncates most games mid-file. The forge
+detects an unterminated document, asks the model only for the remainder, and splices it
+on — up to three times — then validates. Rate-limited free tiers (one reply per 45 s)
+are waited out rather than failed.
 
 ## Skill catalogue
 
