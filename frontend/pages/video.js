@@ -1,4 +1,5 @@
 import { api, mediaUrl } from "../lib/api.js";
+import { rememberResult } from "../lib/persist.js";
 import { $, el, setStatus } from "../components/ui.js";
 
 export function initVideo() {
@@ -26,6 +27,7 @@ export function initVideo() {
         fps: Number($("#video-fps").value),
         motion_bucket_id: Number($("#video-motion").value),
       });
+      rememberResult(res, { kind: "video", title: $("#video-prompt").value.trim(), prompt: $("#video-prompt").value.trim() });
       $("#video-result").prepend(el("div", { class: "stack" }, [
         el("video", { src: mediaUrl(res.video_url), controls: true, autoplay: true, loop: true, muted: true }),
         el("a", { href: mediaUrl(res.video_url), download: "", class: "hint" }, "Download MP4"),

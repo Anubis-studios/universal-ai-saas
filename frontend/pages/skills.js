@@ -1,4 +1,5 @@
 import { api } from "../lib/api.js";
+import { rememberResult } from "../lib/persist.js";
 import { $, el } from "../components/ui.js";
 
 const PAGE = 24;
@@ -80,6 +81,7 @@ export function initSkills(firstPage) {
     out.textContent = "Running…";
     try {
       const res = await api.runSkill(activeSkill.name, params);
+      rememberResult(res, { kind: "skill", title: activeSkill.name, prompt: JSON.stringify(params) });
       const value = res.result ?? res;
       out.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
     } catch (err) {

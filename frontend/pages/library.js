@@ -1,10 +1,12 @@
 import { api, mediaUrl } from "../lib/api.js";
 import { $, el, setStatus } from "../components/ui.js";
+import * as mirror from "../lib/mirror.js";
 
 const PAGE = 24;
 let offset = 0;
 let total = 0;
 let busy = false;
+let offline = false;
 
 const KIND_LABEL = {
   game: "game", image: "image", video: "video", skill: "skill", chat: "chat",
@@ -20,7 +22,7 @@ function when(iso) {
   return date.toLocaleDateString();
 }
 
-function card(record) {
+function card(record, { cached = false } = {}) {
   const payload = record.payload || {};
   const result = payload.result || {};
   const url = record.url ? mediaUrl(record.url) : "";
@@ -33,7 +35,9 @@ function card(record) {
     || (firstImage.b64 ? `data:image/png;base64,${firstImage.b64}` : "");
   if (record.kind === "image" && imageUrl) {
     thumbs.push(el("img", {
-      src: imageUrl.startsWith("data:") ? imageUrl : mediaUrl(imageUrl), alt: record.title || record.prompt, loading: "lazy",
+      src: imageUrl.startsWith("data:") ? imageUrl : mediaUrl(imageUrl),
+      alt: record.title || record.prompt,
+      loading: "lazy",
     }));
   }
 
@@ -41,87 +45,124 @@ function card(record) {
     ...thumbs,
     el("div", { class: "record-head" }, [
       el("span", { class: `badge kind-${record.kind}` }, KIND_LABEL[record.kind] || record.kind),
-      el("span", { class: "hint" }, when(record.created_at)),
+      el("span", { class: "hint" }, cached ? "local copy" : when(record.created_at)),
     ]),
     el("h3", {}, record.title || record.prompt || "(untitled)"),
     el("p", { class: "hint" }, (record.prompt || "").slice(0, 140)),
     el("div", { class: "record-actions" }, [
-      url
-        ? el("a", { class: "ghost", href: url, target: "_blank", rel: "noopener" }, "open ↗")
-        : null,
-      el("button", {
-        class: "ghost", type: "button",
-        onclick: () => show(record.id),
-      }, "details"),
-      el("button", {
-        class: "ghost danger", type: "button",
-        onclick: () => remove(record.id),
-      }, "delete"),
+      url ? el("a", { class: "ghost", href: url, target: "_blank", rel: "noopener" }, "open ↗") : null,
+      el("button", { class: "ghost", type: "button", onclick: () => show(record.id) }, "details"),
+      el("button", { class: "ghost danger", type: "button", onclick: () => remove(record.id) }, "delete"),
     ]),
   ]);
 }
 
 async function show(id) {
   const pre = $("#library-detail");
+  pre.hidden = false;
   try {
     const record = await api.record(id);
-    pre.hidden = false;
+    mirror.remember([record]);
     pre.textContent = JSON.stringify(record, null, 2);
   } catch (err) {
+    const local = mirror.get(id);
+    if (local) {
+      pre.textContent = JSON.stringify(local, null, 2);
+      return;
+    }
     setStatus(pre, err.message, true);
-    pre.hidden = false;
   }
 }
 
 async function remove(id) {
+  // Tombstone first: a failed network call must not resurrect it on refresh.
+  mirror.forget(id);
+  $(`#library-list .record[data-id="${id}"]`)?.remove();
+  total = Math.max(0, total - 1);
+  render();
   try {
     await api.deleteRecord(id);
-    $(`#library-list .record[data-id="${id}"]`)?.remove();
-    total = Math.max(0, total - 1);
-    render();
-  } catch (err) {
-    setStatus($("#library-stats"), err.message, true);
+  } catch {
+    /* already gone locally; the server copy is harmless */
   }
 }
 
 function render() {
+  const local = mirror.count();
   $("#library-count").textContent = total
     ? `${Math.min(offset, total)} of ${total} records`
     : "";
   $("#library-more").hidden = offset >= total;
+  $("#library-stats").textContent = offline
+    ? `Server unreachable — showing ${local} locally saved records. Everything new still saves to this browser.`
+    : local
+      ? `${local} records also mirrored in this browser.`
+      : "";
+}
+
+/** Server results plus anything the browser has that the server lost. */
+function merge(records, { q = "", kind = "" } = {}) {
+  const seen = new Set(records.map((r) => r.id));
+  const needle = q.trim().toLowerCase();
+  const extra = mirror.all().filter((record) => {
+    if (seen.has(record.id)) return false;
+    if (kind && record.kind !== kind) return false;
+    if (!needle) return true;
+    return [record.title, record.prompt, record.model, record.kind]
+      .filter(Boolean)
+      .some((field) => String(field).toLowerCase().includes(needle));
+  });
+  return { records: [...records, ...extra.map((r) => ({ ...r, __cached: true }))], extra: extra.length };
 }
 
 async function load(reset = false) {
   if (busy) return;
   busy = true;
   const list = $("#library-list");
+  const params = { q: $("#library-search").value.trim(), kind: $("#library-kind").value };
+
   if (reset) {
     offset = 0;
     list.replaceChildren();
-  }
-  $("#library-count").textContent = "searching…";
-  try {
-    const page = await api.library({
-      q: $("#library-search").value.trim(),
-      kind: $("#library-kind").value,
-      limit: PAGE,
-      offset,
-    });
-    total = page.total;
-    const cards = page.records.map(card);
-    if (!cards.length && reset) {
-      list.replaceChildren(
-        el("div", { class: "empty" }, [
-          el("h1", {}, "Nothing here yet"),
-          el("p", {}, "Generate a game, image or skill run — it lands here automatically."),
-        ]),
-      );
+    // Paint from the mirror immediately — no spinner on refresh.
+    const cached = mirror.find(params).slice(0, PAGE);
+    if (cached.length) {
+      list.append(...cached.map((r) => card(r, { cached: true })));
+      $("#library-count").textContent = "showing saved copy…";
     }
-    list.append(...cards);
-    offset += page.count;
+  }
+
+  try {
+    const page = await api.library({ ...params, limit: PAGE, offset });
+    offline = false;
+    mirror.remember(page.records);
+
+    if (reset) list.replaceChildren();
+    const { records, extra } = merge(page.records, params);
+    total = Math.max(page.total, page.records.length + extra);
+
+    if (!records.length) {
+      list.replaceChildren(el("div", { class: "empty" }, [
+        el("h1", {}, "Nothing here yet"),
+        el("p", {}, "Generate a game, image or skill run — it lands here automatically."),
+      ]));
+    } else {
+      list.append(...records.map((r) => card(r, { cached: Boolean(r.__cached) })));
+    }
+    offset = page.count;
     render();
   } catch (err) {
-    setStatus($("#library-stats"), err.message, true);
+    offline = true;
+    const local = mirror.find(params);
+    total = local.length;
+    if (reset) list.replaceChildren();
+    if (!local.length) {
+      setStatus($("#library-stats"), `${err.message} — nothing saved locally yet.`, true);
+    }
+    if (local.length) {
+      list.replaceChildren(...local.slice(0, PAGE).map((r) => card(r, { cached: true })));
+    }
+    render();
   } finally {
     busy = false;
   }
@@ -133,12 +174,18 @@ export async function initLibrary() {
   if (!search || search.dataset.ready) return;
   search.dataset.ready = "1";
 
+  // Paint from the mirror before any network call, so a refresh is instant.
+  const early = mirror.all().slice(0, PAGE);
+  if (early.length) {
+    $("#library-list").replaceChildren(...early.map((r) => card(r, { cached: true })));
+  }
+
   try {
     const status = await api.dbStatus();
     $("#library-backend").textContent =
       `${status.backend} · ${status.records} records · ${status.persistent ? "persistent" : "ephemeral"}`;
     $("#library-stats").textContent = status.hint || "";
-  } catch (err) {
+  } catch {
     $("#library-backend").textContent = "database unreachable";
   }
 
@@ -150,3 +197,6 @@ export async function initLibrary() {
   $("#library-more").addEventListener("click", () => load(false));
   load(true);
 }
+
+// Keep the mirror honest when the network returns mid-session.
+window.addEventListener("online", () => { if (offline) load(true); });

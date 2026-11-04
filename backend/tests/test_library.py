@@ -96,3 +96,66 @@ async def test_api_records_and_serves_library(client):
     missing = await client.get("/api/v1/library/nope")
     assert missing.status_code == 404
     assert (await client.delete("/api/v1/library/nope")).status_code == 404
+
+
+# ---------------------------------------------------------------- durability
+def test_snapshot_survives_a_fresh_connection(tmp_path):
+    """A recycled container reconnects to the same file: no records lost."""
+    path = tmp_path / "s.db"
+    first = LibraryDB(path).connect()
+    first.add("game", title="Speeder", prompt="dodge", payload={"lines": 233})
+    first.save_snapshot()
+    first.close()
+
+    second = LibraryDB(path).connect()
+    try:
+        assert second.search("")["total"] == 1
+        assert second.search("dodge")["records"][0]["title"] == "Speeder"
+    finally:
+        second.close()
+
+
+def test_snapshot_restores_when_the_database_file_is_lost(tmp_path):
+    """Render's ephemeral disk wipes the .db but the snapshot sits beside it."""
+    path = tmp_path / "s.db"
+    first = LibraryDB(path).connect()
+    first.add("image", title="reef", prompt="a coral reef")
+    first.save_snapshot()
+    first.close()
+
+    path.unlink()
+    for orphan in tmp_path.glob("s.db-wal"), tmp_path.glob("s.db-shm"):
+        for file in orphan:
+            file.unlink(missing_ok=True)
+
+    second = LibraryDB(path).connect()
+    try:
+        assert second.search("coral")["total"] == 1
+    finally:
+        second.close()
+
+
+def test_export_and_import_round_trip_merge(db, tmp_path):
+    record = db.add("game", title="Speeder", prompt="dodge asteroids")
+    dump = db.dump()
+    assert dump["records"][0]["id"] == record["id"]
+
+    other = LibraryDB(tmp_path / "other.db").connect()
+    try:
+        assert other.restore(dump) == 1
+        assert other.restore(dump) == 0, "importing twice must not duplicate"
+        assert other.get(record["id"])["title"] == "Speeder"
+        assert other.get(record["id"])["created_at"] == record["created_at"]
+    finally:
+        other.close()
+
+
+def test_snapshot_can_be_disabled(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTO_SNAPSHOT", "0")
+    handle = LibraryDB(tmp_path / "off.db").connect()
+    try:
+        handle.add("chat", prompt="hello")
+        assert handle.save_snapshot() is False
+        assert handle.status()["snapshot"] is None
+    finally:
+        handle.close()

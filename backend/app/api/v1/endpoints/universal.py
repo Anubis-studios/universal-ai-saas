@@ -51,10 +51,10 @@ def library(request: Request) -> LibraryDB:
 def _record(
     request: Request, kind: str, prompt: str, result: dict[str, Any], *,
     title: str = "", url: str = "", payload: dict[str, Any] | None = None,
-) -> None:
+) -> dict[str, Any] | None:
     """Persist a generation to the library. Never fails a request."""
     try:
-        library(request).add(
+        return library(request).add(
             kind,
             title=title or "",
             prompt=prompt or "",
@@ -64,6 +64,7 @@ def _record(
         )
     except Exception:  # noqa: BLE001 - storage is a side effect, not the answer
         logging.getLogger(__name__).warning("library write failed", exc_info=True)
+        return None
 
 
 def _first_url(result: dict[str, Any]) -> str:
@@ -132,8 +133,8 @@ async def generate_image(body: RunRequest, request: Request) -> RunResponse:
         body.prompt, model, negative_prompt=body.negative_prompt,
         width=width, height=height, steps=body.steps,
     )
-    _record(request, "image", body.prompt, result, title=body.prompt)
-    return RunResponse(**result)
+    record = _record(request, "image", body.prompt, result, title=body.prompt)
+    return RunResponse(**result, record_id=(record or {}).get("id"))
 
 
 @router.post("/models/{model_name}/run", response_model=RunResponse, tags=["inference"])
@@ -149,8 +150,8 @@ async def run_model(model_name: str, body: RunRequest, request: Request) -> RunR
             messages, definition.name,
             temperature=body.temperature, max_tokens=body.max_tokens, top_p=body.top_p,
         )
-        _record(request, "chat", messages[-1]["content"], result)
-        return RunResponse(**result)
+        record = _record(request, "chat", messages[-1]["content"], result)
+        return RunResponse(**result, record_id=(record or {}).get("id"))
 
     if definition.category == "image":
         if not body.prompt:
@@ -163,8 +164,8 @@ async def run_model(model_name: str, body: RunRequest, request: Request) -> RunR
             body.prompt, definition.name, negative_prompt=body.negative_prompt,
             width=width, height=height, steps=body.steps,
         )
-        _record(request, "image", body.prompt, result, title=body.prompt)
-        return RunResponse(**result)
+        record = _record(request, "image", body.prompt, result, title=body.prompt)
+        return RunResponse(**result, record_id=(record or {}).get("id"))
 
     if definition.category == "embedding":
         if not body.prompt:
@@ -192,8 +193,8 @@ async def chat(request: Request, body: RunRequest) -> Any:
             messages, "auto", temperature=body.temperature, max_tokens=body.max_tokens,
             top_p=body.top_p,
         )
-        _record(request, "chat", messages[-1]["content"], result)
-        return RunResponse(**result)
+        record = _record(request, "chat", messages[-1]["content"], result)
+        return RunResponse(**result, record_id=(record or {}).get("id"))
 
     async def events():
         try:
@@ -253,11 +254,11 @@ async def get_skill(skill_name: str, request: Request) -> dict[str, Any]:
 @router.post("/skills/{skill_name}/run", tags=["skills"])
 async def run_skill(skill_name: str, body: SkillRequest, request: Request) -> dict[str, Any]:
     result = await skills(request).execute(skill_name, body.inputs or body.params)
-    _record(
+    record = _record(
         request, "skill", json.dumps(body.inputs or body.params)[:4000], result,
         title=skill_name, payload={"skill": skill_name},
     )
-    return result
+    return {**result, "record_id": (record or {}).get("id")}
 
 
 # ----------------------------------------------------------------------- video
@@ -275,15 +276,15 @@ async def generate_video(body: VideoRequest, request: Request) -> dict[str, Any]
             seed=body.seed, steps=body.steps, width=body.width, height=body.height,
             prompt=body.prompt,
         )
-        _record(request, "video", body.prompt, result, title=body.prompt)
-        return result
+        record = _record(request, "video", body.prompt, result, title=body.prompt)
+        return {**result, "record_id": (record or {}).get("id")}
     result = await engine.text_to_video(
         body.prompt, negative_prompt=body.negative_prompt, steps=body.steps,
         width=body.width, height=body.height, fps=body.fps,
         motion_bucket_id=body.motion_bucket_id, seed=body.seed,
     )
-    _record(request, "video", body.prompt, result, title=body.prompt)
-    return result
+    record = _record(request, "video", body.prompt, result, title=body.prompt)
+    return {**result, "record_id": (record or {}).get("id")}
 
 
 # ----------------------------------------------------------------------- games
@@ -294,12 +295,12 @@ async def generate_game(body: GameRequest, request: Request) -> dict[str, Any]:
         result = await forge(request).generate(body.prompt, model=body.model, genre=body.genre)
     except GatewayError as exc:
         raise HTTPException(502, exc.message) from exc
-    _record(
+    record = _record(
         request, "game", body.prompt, result,
         title=result.get("title") or body.prompt, url=result.get("url", ""),
         payload={k: result.get(k) for k in ("genre", "lines", "bytes", "checks")},
     )
-    return result
+    return {**result, "record_id": (record or {}).get("id")}
 
 
 @router.get("/games", tags=["games"])
@@ -334,6 +335,27 @@ async def embeddings(request: Request, body: RunRequest) -> dict[str, Any]:
 async def db_status(request: Request) -> dict[str, Any]:
     """Which free backend is live, and where the records are."""
     return library(request).status()
+
+
+@router.get("/library/export", tags=["library"])
+async def export_library(request: Request) -> dict[str, Any]:
+    """Every record as portable JSON — the backup that survives anything."""
+    return library(request).dump()
+
+
+@router.post("/library/import", tags=["library"])
+async def import_library(request: Request, data: dict[str, Any]) -> dict[str, Any]:
+    """Merge a dump back in. Existing ids win, so importing twice is safe."""
+    restored = library(request).restore(data)
+    return {"restored": restored, "total": library(request).stats()["records"]}
+
+
+@router.post("/library/snapshot", tags=["library"])
+async def snapshot_library(request: Request) -> dict[str, Any]:
+    """Force a snapshot now instead of waiting for the debounce."""
+    db = library(request)
+    written = db.save_snapshot()
+    return {"written": written, "path": db.status().get("snapshot")}
 
 
 @router.get("/library", tags=["library"])

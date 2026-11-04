@@ -48,3 +48,19 @@ def test_library_refresh_reads_width_from_viewport_notrypto():
     page = (FRONTEND / "pages" / "library.js").read_text()
     assert "fetch(" not in page
     assert "/api/v1" not in page
+
+
+def test_library_mirror_is_wired_into_every_generator():
+    """A refresh must not lose work, so every generating page mirrors its result."""
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    for page in ("chat", "image", "game", "video", "skills"):
+        source = (frontend / "pages" / f"{page}.js").read_text()
+        assert "rememberResult" in source, f"{page} does not mirror its output"
+    library = (frontend / "pages" / "library.js").read_text()
+    assert "mirror.find" in library, "library must fall back to the local mirror"
+
+
+def test_mirror_uses_a_tombstone_for_deletes():
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    mirror = (frontend / "lib" / "mirror.js").read_text()
+    assert "deleted" in mirror and "forget" in mirror

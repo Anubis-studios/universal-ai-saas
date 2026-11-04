@@ -1,4 +1,5 @@
 import { api, mediaUrl, downloadB64 } from "../lib/api.js";
+import { rememberResult } from "../lib/persist.js";
 import { $, el, setStatus } from "../components/ui.js";
 
 export function initImage(models) {
@@ -25,6 +26,7 @@ export function initImage(models) {
         image_size: $("#image-size").value,
         steps: Number($("#image-steps").value),
       });
+      rememberResult(res, { kind: "image", title: prompt, prompt });
       const results = $("#image-results");
       for (const image of res.images || []) {
         const src = image.url ? mediaUrl(image.url) : `data:${image.mime};base64,${image.b64}`;

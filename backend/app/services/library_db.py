@@ -26,6 +26,7 @@ import os
 import secrets
 import sqlite3
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -111,6 +112,7 @@ class LibraryDB:
         return self
 
     def close(self) -> None:
+        self.save_snapshot()
         if self._conn is not None:
             self._conn.close()
             self._conn = None
@@ -134,6 +136,14 @@ class LibraryDB:
             self._fts = False
         conn.commit()
         self._conn = conn
+
+        # If the container was recycled and the database came back empty, the
+        # snapshot next to it is the last known good state. Only used when the
+        # table is genuinely empty, so it can never overwrite live rows.
+        if not self._run("SELECT id FROM records LIMIT 1"):
+            count = self.load_snapshot()
+            if count:
+                logger.info("restored %s records from snapshot", count)
 
     # ---------------------------------------------------------------- turso
     def _turso(self, statements: list[tuple[str, list[Any]]]) -> list[dict[str, Any]]:
@@ -229,12 +239,95 @@ class LibraryDB:
         return rows
 
     # -------------------------------------------------------------- writing
+    # ----------------------------------------------------------- snapshots
+    def dump(self) -> dict[str, Any]:
+        """Every record as portable JSON, oldest first."""
+        rows = self._run("SELECT * FROM records ORDER BY created_at ASC")
+        return {
+            "version": 1,
+            "exported_at": _now(),
+            "backend": self.backend,
+            "records": [_hydrate(r) for r in rows],
+        }
+
+    def restore(self, data: dict[str, Any]) -> int:
+        """Insert records from a dump, skipping ids that already exist."""
+        records = data.get("records") if isinstance(data, dict) else data
+        if not isinstance(records, list):
+            return 0
+        existing = {r["id"] for r in self._run("SELECT id FROM records")}
+        restored = 0
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            record_id = str(record.get("id") or "")
+            if not record_id or record_id in existing:
+                continue
+            self.add(
+                str(record.get("kind") or "chat"),
+                title=str(record.get("title") or ""),
+                prompt=str(record.get("prompt") or ""),
+                model=str(record.get("model") or ""),
+                url=str(record.get("url") or ""),
+                payload=record.get("payload") or {},
+                record_id=record_id,
+                created_at=str(record.get("created_at") or ""),
+            )
+            existing.add(record_id)
+            restored += 1
+        return restored
+
+    @property
+    def snapshot_path(self) -> Path:
+        return Path(os.environ.get("DB_SNAPSHOT_PATH", str(self.path) + ".snapshot.json"))
+
+    def save_snapshot(self) -> bool:
+        """Write the whole table to a JSON file next to the database.
+
+        On a host whose disk survives restarts (local docker, a paid Render disk)
+        this is what makes a refresh or a crash lossless without a managed
+        database. It is a no-op for managed backends, which already persist.
+        """
+        if self.backend != "sqlite" or os.environ.get("AUTO_SNAPSHOT", "1") == "0":
+            return False
+        try:
+            payload = self.dump()
+            target = self.snapshot_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_suffix(".tmp")
+            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(target)
+            self._last_snapshot = time.time()
+            return True
+        except Exception:  # noqa: BLE001 - never break a request over a backup
+            logger.warning("snapshot write failed", exc_info=True)
+            return False
+
+    def load_snapshot(self) -> int:
+        target = self.snapshot_path
+        if self.backend != "sqlite" or not target.exists():
+            return 0
+        try:
+            return self.restore(json.loads(target.read_text(encoding="utf-8")))
+        except Exception:  # noqa: BLE001
+            logger.warning("snapshot restore failed", exc_info=True)
+            return 0
+
+    def _after_write(self) -> None:
+        """Debounced snapshot: a burst of writes costs one dump, not one each."""
+        if self.backend != "sqlite" or os.environ.get("AUTO_SNAPSHOT", "1") == "0":
+            return
+        if time.time() - getattr(self, "_last_snapshot", 0.0) < 2.0:
+            return
+        self.save_snapshot()
+
     def add(
         self, kind: str, *, title: str = "", prompt: str = "", model: str = "",
         url: str = "", payload: dict[str, Any] | None = None, record_id: str | None = None,
+        created_at: str = "",
     ) -> dict[str, Any]:
         record_id = record_id or _new_id()
-        created = _now()
+        created = created_at or _now()
         blob = _compact(payload or {})
         with self._lock:
             self._run(
@@ -254,6 +347,7 @@ class LibraryDB:
                 "INSERT INTO events (kind, detail, created_at) VALUES (?,?,?)",
                 [f"{kind}.create", record_id, created],
             )
+        self._after_write()
         return self.get(record_id) or {}
 
     def get(self, record_id: str) -> dict[str, Any] | None:
@@ -269,6 +363,8 @@ class LibraryDB:
                     self._run("DELETE FROM records_fts WHERE id = ?", [record_id])
                 except Exception:  # noqa: BLE001
                     pass
+        if existed:
+            self._after_write()
         return existed
 
     # -------------------------------------------------------------- reading
@@ -332,6 +428,10 @@ class LibraryDB:
         payload = self.stats()
         payload |= {
             "size_bytes": self.path.stat().st_size if self._conn and self.path.exists() else None,
+            "snapshot": (
+                str(self.snapshot_path) if self.backend == "sqlite"
+                and os.environ.get("AUTO_SNAPSHOT", "1") != "0" else None
+            ),
             "error": self.error,
             "hint": (
                 "Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (free tier) or DATABASE_URL "

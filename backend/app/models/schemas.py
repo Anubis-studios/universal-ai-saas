@@ -71,6 +71,7 @@ class RunResponse(BaseModel):
     usage: dict[str, Any] = Field(default_factory=dict)
     latency_ms: int | None = None
     raw: dict[str, Any] | None = None
+    record_id: str | None = None
 
 
 class SkillField(BaseModel):

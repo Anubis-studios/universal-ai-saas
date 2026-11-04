@@ -1,4 +1,5 @@
 import { api, mediaUrl } from "../lib/api.js";
+import { rememberResult } from "../lib/persist.js";
 import { $, el } from "../components/ui.js";
 
 const state = { genre: "", busy: false };
@@ -73,6 +74,7 @@ export function initGame(models) {
         { label: "model", text: game.model },
         { label: "build", text: `${(game.latency_ms / 1000).toFixed(1)} s` },
       ]);
+      rememberResult(game, { kind: "game", title: game.title || prompt, prompt });
       showGame(game.url);
 
       const open = $("#game-open");

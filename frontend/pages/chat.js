@@ -1,4 +1,5 @@
 import { api, streamChat, downloadB64 } from "../lib/api.js";
+import { rememberResult } from "../lib/persist.js";
 import { $, el } from "../components/ui.js";
 
 const state = { history: [], busy: false, controller: null };
@@ -83,6 +84,7 @@ export function initChat(models) {
         bubble.firstChild.textContent = res.text;
         bubble.append(el("div", { class: "meta" }, `${res.provider} · ${res.model} · ${res.latency_ms} ms`));
         state.history.push({ role: "assistant", content: res.text });
+        rememberResult(res, { kind: "chat", prompt: payload.prompt || "" });
         if (res.images?.length) renderImages(res.images);
       }
     } catch (err) {
