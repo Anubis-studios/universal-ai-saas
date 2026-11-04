@@ -6,6 +6,7 @@ import { initImage } from "./pages/image.js";
 import { initVideo } from "./pages/video.js";
 import { initSkills } from "./pages/skills.js";
 import { initModels } from "./pages/models.js";
+import { initLibrary } from "./pages/library.js";
 
 function switchView(name) {
   $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.view === name));
@@ -23,7 +24,8 @@ $("#settings-toggle").addEventListener("click", () => {
 $("#settings-dialog").addEventListener("close", (e) => {
   setApiBase($("#api-base").value.trim());
   setApiKey($("#api-key").value);
-  if (e.target.returnValue === "save") boot();
+  if (e.target.returnValue === "save") initLibrary();
+boot();
 });
 
 async function boot() {

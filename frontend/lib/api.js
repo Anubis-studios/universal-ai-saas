@@ -61,6 +61,15 @@ export const api = {
   },
   skill: (name) => request(`/skills/${encodeURIComponent(name)}`),
   skillCategories: () => request("/skills/categories"),
+  dbStatus: () => request("/db/status"),
+  library: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== "" && v != null),
+    ).toString();
+    return request(`/library${qs ? `?${qs}` : ""}`);
+  },
+  record: (id) => request(`/library/${encodeURIComponent(id)}`),
+  deleteRecord: (id) => request(`/library/${encodeURIComponent(id)}`, { method: "DELETE" }),
   runSkill: (name, params) => request(`/skills/${encodeURIComponent(name)}/run`, { method: "POST", body: { params } }),
 };
 

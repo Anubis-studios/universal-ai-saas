@@ -505,3 +505,101 @@ dialog h3 { margin-top: 0; }
   .msg { max-width: 96%; }
   .row > label, .row > input, .row > select { flex: 1 1 100%; }
 }
+
+/* ---------------------------------------------------------------- library */
+.record-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.record {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #01060d;
+  min-height: 120px;
+}
+
+.record::before,
+.record::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--cyan);
+  opacity: 0.55;
+}
+
+.record::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.record::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+
+.record img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+
+.record h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.record p { margin: 0; font-size: 11px; line-height: 1.5; }
+
+.record-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.record-actions .ghost,
+.record-actions a {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--dim);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.record-actions .ghost:hover,
+.record-actions a:hover { border-color: var(--cyan); color: var(--cyan); }
+.record-actions .danger:hover { border-color: var(--amber); color: var(--amber); }
+
+.badge {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  color: var(--cyan);
+}
+
+.badge.kind-game { color: var(--amber); border-color: rgba(247, 159, 67, 0.4); }
+.badge.kind-image { color: #9cdcfe; }
+.badge.kind-skill { color: #8ee6b0; }
+.badge.kind-chat { color: #cfd6e4; }

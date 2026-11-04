@@ -15,6 +15,7 @@ from app.core.errors import GatewayError
 from app.core.logging import configure_logging
 from app.services.agentic_skills import AgenticSkillsService
 from app.services.game_forge import GAMES_DIR, GameForge
+from app.services.library_db import LibraryDB
 from app.services.universal_gateway import UniversalGateway
 from app.services.video_engine import OUTPUT_DIR, VideoEngine
 
@@ -24,17 +25,40 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging(settings.DEBUG)
+    app.state.db = LibraryDB().connect()
     app.state.gateway = UniversalGateway()
     app.state.skills = AgenticSkillsService(app.state.gateway)
     app.state.skills.warm()  # build the FTS5 skill index; ~0.5s, then instant search
     app.state.video = VideoEngine()
     app.state.games = GameForge(app.state.gateway)
+    _index_existing_games(app.state.db)
+    logger.info("library backend: %s", app.state.db.backend)
     logger.info("%s v%s starting", settings.APP_NAME, settings.APP_VERSION)
     try:
         yield
     finally:
         await app.state.skills.close()
+        app.state.db.close()
         logger.info("shutdown complete")
+
+
+def _index_existing_games(db: LibraryDB) -> None:
+    """Adopt games already on disk so the library is complete on first boot."""
+    try:
+        known = {r["url"] for r in db.search("", kind="game", limit=200)["records"]}
+        for path in GAMES_DIR.glob("*.html"):
+            url = f"/games/{path.name}"
+            if url in known:
+                continue
+            db.add(
+                "game",
+                title=path.stem.rsplit("-", 2)[0].replace("-", " ").title(),
+                prompt="",
+                url=url,
+                payload={"bytes": path.stat().st_size, "adopted": True},
+            )
+    except Exception:  # noqa: BLE001 - startup must not depend on the library
+        logger.warning("could not adopt existing games", exc_info=True)
 
 
 app = FastAPI(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -20,6 +21,7 @@ from app.models.schemas import (
 )
 from app.services.agentic_skills import AgenticSkillsService
 from app.services.game_forge import GAMES_DIR, GameForge
+from app.services.library_db import LibraryDB
 from app.services.universal_gateway import UniversalGateway
 from app.services.video_engine import VideoEngine
 
@@ -40,6 +42,59 @@ def video(request: Request) -> VideoEngine:
 
 def forge(request: Request) -> GameForge:
     return request.app.state.games
+
+
+def library(request: Request) -> LibraryDB:
+    return request.app.state.db
+
+
+def _record(
+    request: Request, kind: str, prompt: str, result: dict[str, Any], *,
+    title: str = "", url: str = "", payload: dict[str, Any] | None = None,
+) -> None:
+    """Persist a generation to the library. Never fails a request."""
+    try:
+        library(request).add(
+            kind,
+            title=title or "",
+            prompt=prompt or "",
+            model=str(result.get("model", ""))[:200],
+            url=url or _first_url(result),
+            payload=payload if payload is not None else {"result": _slim(result)},
+        )
+    except Exception:  # noqa: BLE001 - storage is a side effect, not the answer
+        logging.getLogger(__name__).warning("library write failed", exc_info=True)
+
+
+def _first_url(result: dict[str, Any]) -> str:
+    """The one previewable asset a record has, if any.
+
+    Image and video responses nest their assets in a list, so a top-level `url`
+    lookup alone left library cards without an "open" link.
+    """
+    direct = result.get("url")
+    if isinstance(direct, str) and direct:
+        return direct
+    for key in ("images", "videos"):
+        items = result.get(key)
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    candidate = item.get("url")
+                    if isinstance(candidate, str) and candidate:
+                        return candidate
+    return ""
+
+
+def _slim(result: dict[str, Any]) -> dict[str, Any]:
+    """Trim base64 blobs so a record stays a few KB."""
+    slim: dict[str, Any] = {}
+    for key, value in result.items():
+        if isinstance(value, str) and len(value) > 2000:
+            slim[key] = value[:200] + f"…({len(value)} chars)"
+        else:
+            slim[key] = value
+    return slim
 
 
 # ------------------------------------------------------------------- catalogue
@@ -77,6 +132,7 @@ async def generate_image(body: RunRequest, request: Request) -> RunResponse:
         body.prompt, model, negative_prompt=body.negative_prompt,
         width=width, height=height, steps=body.steps,
     )
+    _record(request, "image", body.prompt, result, title=body.prompt)
     return RunResponse(**result)
 
 
@@ -93,6 +149,7 @@ async def run_model(model_name: str, body: RunRequest, request: Request) -> RunR
             messages, definition.name,
             temperature=body.temperature, max_tokens=body.max_tokens, top_p=body.top_p,
         )
+        _record(request, "chat", messages[-1]["content"], result)
         return RunResponse(**result)
 
     if definition.category == "image":
@@ -106,6 +163,7 @@ async def run_model(model_name: str, body: RunRequest, request: Request) -> RunR
             body.prompt, definition.name, negative_prompt=body.negative_prompt,
             width=width, height=height, steps=body.steps,
         )
+        _record(request, "image", body.prompt, result, title=body.prompt)
         return RunResponse(**result)
 
     if definition.category == "embedding":
@@ -134,6 +192,7 @@ async def chat(request: Request, body: RunRequest) -> Any:
             messages, "auto", temperature=body.temperature, max_tokens=body.max_tokens,
             top_p=body.top_p,
         )
+        _record(request, "chat", messages[-1]["content"], result)
         return RunResponse(**result)
 
     async def events():
@@ -193,7 +252,12 @@ async def get_skill(skill_name: str, request: Request) -> dict[str, Any]:
 
 @router.post("/skills/{skill_name}/run", tags=["skills"])
 async def run_skill(skill_name: str, body: SkillRequest, request: Request) -> dict[str, Any]:
-    return await skills(request).execute(skill_name, body.inputs or body.params)
+    result = await skills(request).execute(skill_name, body.inputs or body.params)
+    _record(
+        request, "skill", json.dumps(body.inputs or body.params)[:4000], result,
+        title=skill_name, payload={"skill": skill_name},
+    )
+    return result
 
 
 # ----------------------------------------------------------------------- video
@@ -206,16 +270,20 @@ async def video_health(request: Request) -> dict[str, Any]:
 async def generate_video(body: VideoRequest, request: Request) -> dict[str, Any]:
     engine = video(request)
     if body.init_image_b64:
-        return await engine.image_to_video(
+        result = await engine.image_to_video(
             body.init_image_b64, fps=body.fps, motion_bucket_id=body.motion_bucket_id,
             seed=body.seed, steps=body.steps, width=body.width, height=body.height,
             prompt=body.prompt,
         )
-    return await engine.text_to_video(
+        _record(request, "video", body.prompt, result, title=body.prompt)
+        return result
+    result = await engine.text_to_video(
         body.prompt, negative_prompt=body.negative_prompt, steps=body.steps,
         width=body.width, height=body.height, fps=body.fps,
         motion_bucket_id=body.motion_bucket_id, seed=body.seed,
     )
+    _record(request, "video", body.prompt, result, title=body.prompt)
+    return result
 
 
 # ----------------------------------------------------------------------- games
@@ -223,9 +291,15 @@ async def generate_video(body: VideoRequest, request: Request) -> dict[str, Any]
 async def generate_game(body: GameRequest, request: Request) -> dict[str, Any]:
     """Single prompt -> design -> complete playable HTML5 game, served at /games/{file}."""
     try:
-        return await forge(request).generate(body.prompt, model=body.model, genre=body.genre)
+        result = await forge(request).generate(body.prompt, model=body.model, genre=body.genre)
     except GatewayError as exc:
         raise HTTPException(502, exc.message) from exc
+    _record(
+        request, "game", body.prompt, result,
+        title=result.get("title") or body.prompt, url=result.get("url", ""),
+        payload={k: result.get(k) for k in ("genre", "lines", "bytes", "checks")},
+    )
+    return result
 
 
 @router.get("/games", tags=["games"])
@@ -253,3 +327,36 @@ async def embeddings(request: Request, body: RunRequest) -> dict[str, Any]:
         raise HTTPException(400, "Provide 'prompt' or 'messages'.")
     vectors = await gateway(request).embed(texts)
     return {"model": "nomic-embed-text", "vectors": vectors, "dimensions": len(vectors[0])}
+
+
+# -------------------------------------------------------------------- library
+@router.get("/db/status", tags=["library"])
+async def db_status(request: Request) -> dict[str, Any]:
+    """Which free backend is live, and where the records are."""
+    return library(request).status()
+
+
+@router.get("/library", tags=["library"])
+async def search_library(
+    request: Request,
+    q: str = Query(default="", description="Full-text query; empty browses newest first."),
+    kind: str = Query(default="", description="chat | image | video | game | skill"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    return library(request).search(q, kind=kind, limit=limit, offset=offset)
+
+
+@router.get("/library/{record_id}", tags=["library"])
+async def get_record(record_id: str, request: Request) -> dict[str, Any]:
+    record = library(request).get(record_id)
+    if record is None:
+        raise HTTPException(404, f"No record '{record_id}'.")
+    return record
+
+
+@router.delete("/library/{record_id}", tags=["library"])
+async def delete_record(record_id: str, request: Request) -> dict[str, Any]:
+    if not library(request).delete(record_id):
+        raise HTTPException(404, f"No record '{record_id}'.")
+    return {"deleted": record_id}

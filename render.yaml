@@ -14,6 +14,17 @@ services:
       # Render generates this for you; copy it from the dashboard to call the API.
       - key: PLATFORM_API_KEY
         generateValue: true
+      # Database: SQLite by default (free, automatic, no signup). Its file lives on
+      # ephemeral disk, so set the Turso pair below (free tier) to keep records
+      # across redeploys. Set DATABASE_URL to a postgres:// URL instead if you prefer.
+      - key: DB_PATH
+        value: /app/outputs/library.db
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
       # Add provider keys in the dashboard after the first deploy.
       - key: GROQ_API_KEY
         sync: false

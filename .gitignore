@@ -19,3 +19,7 @@ backend/outputs/
 .idea/
 .vscode/
 *.log
+
+# Generated artefacts
+outputs/
+*.db

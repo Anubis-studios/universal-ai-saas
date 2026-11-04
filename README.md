@@ -114,6 +114,10 @@ GET  /api/v1/skills/{name}              # full skill detail
 POST /api/v1/skills/{name}/run          # {"params": {...}} or {"inputs": {...}}
 POST /api/v1/games/generate             # {"prompt": "...", "genre": "arcade"} -> playable HTML
 GET  /games/{file}                      # the generated game, ready to play
+GET  /api/v1/db/status                  # which database, how many records, is it persistent
+GET  /api/v1/library                    # ?q= full-text search, ?kind=, ?limit=&offset=
+GET  /api/v1/library/{id}               # one record
+DELETE /api/v1/library/{id}             # remove a record
 POST /api/v1/video/generate             # ComfyUI SVD workflow
 GET  /api/v1/video/health
 GET  /media/{file}                      # generated images and MP4s
@@ -126,6 +130,32 @@ curl -s localhost:8000/api/v1/chat \
 ```
 
 Streaming uses server-sent events, so `curl -N` works too.
+
+## Database
+
+Every generation is written to a database as a side effect of the request — games,
+images, video jobs, skill runs and chats — then indexed for full-text search. The
+`Library` tab is the browser over it.
+
+The adapter picks the first backend that is configured, and falls back on its own:
+
+| Order | Backend | Setup | Notes |
+|---|---|---|---|
+| 1 | **Turso** (libSQL) | set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | free tier, no card, HTTP API — survives Render redeploys |
+| 2 | **Postgres** | set `DATABASE_URL=postgres://…` | Neon / Supabase free tiers |
+| 3 | **SQLite** (default) | nothing at all | zero signup, FTS5 search, file at `DB_PATH` |
+
+So it works out of the box with **no account and no configuration**, which is the
+"fully automatic" part; give it the Turso pair when you want records to outlive a
+deploy. `GET /api/v1/db/status` reports which one is live and `persistent: true|false`.
+
+```bash
+curl -s "$API/api/v1/library?q=asteroid&kind=game" -H "Authorization: Bearer $KEY"
+```
+
+Search is real full-text (SQLite FTS5 with BM25 ranking), not `LIKE '%…%'`: queries
+match titles, prompts and payload text, quoted phrases work, and `kind` filters are
+applied before ranking.
 
 ## Layout
 

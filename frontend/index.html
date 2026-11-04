@@ -24,6 +24,7 @@
         <button class="tab" data-view="image" role="tab">Image</button>
         <button class="tab" data-view="video" role="tab">Video</button>
         <button class="tab" data-view="skills" role="tab">Skills</button>
+        <button class="tab" data-view="library" role="tab">Library</button>
         <button class="tab" data-view="models" role="tab">Models</button>
       </nav>
       <button id="settings-toggle" class="ghost" title="Connection settings">⚙︎</button>
@@ -156,6 +157,35 @@
             </div>
           </form>
           <pre id="skill-output" class="output" hidden></pre>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------- library -->
+      <section id="view-library" class="view">
+        <div class="panel">
+          <h2>Library</h2>
+          <p class="hint">
+            Everything you generate is written to an embedded database and stays searchable —
+            games, images, videos, skills and chats. <span id="library-backend" class="badge">…</span>
+          </p>
+          <div class="row">
+            <input id="library-search" type="search" placeholder="Search everything — e.g. asteroid, invoice" autocomplete="off" />
+            <select id="library-kind">
+              <option value="">All kinds</option>
+              <option value="game">Games</option>
+              <option value="image">Images</option>
+              <option value="video">Video</option>
+              <option value="skill">Skills</option>
+              <option value="chat">Chats</option>
+            </select>
+          </div>
+          <div id="library-stats" class="hint"></div>
+          <div id="library-list" class="record-grid"></div>
+          <div class="row">
+            <button type="button" class="ghost" id="library-more" hidden>Load more</button>
+            <span class="hint" id="library-count"></span>
+          </div>
+          <pre id="library-detail" class="output" hidden></pre>
         </div>
       </section>
 
